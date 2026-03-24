@@ -60,6 +60,17 @@ body {
 .card.storyMode {
   border-radius: 0;
   animation: none;
+  /* 겉 테두리는 옅게 (포토부스 예시처럼 진한 외곽선 없음) */
+  border-width: 1px;
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.t1.storyMode,
+.t2.storyMode,
+.t3.storyMode,
+.t4.storyMode {
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .card.captureStatic,
@@ -319,8 +330,8 @@ body {
 
 .basicMode {
   border-radius: 0;
-  border-width: 2px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
+  border: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
 }
 .basicMode .grid {
   padding: 38px 8px 8px;
@@ -330,7 +341,15 @@ body {
   width: calc(100% - 8px);
   margin-inline: auto;
   border-radius: 0;
-  border-width: 2px;
+  border: none;
+}
+.t5.basicMode .slot,
+.t6.basicMode .slot {
+  border: none;
+}
+.t5.basicMode .slot:hover,
+.t6.basicMode .slot:hover {
+  border: none;
 }
 .basicMode .slot img {
   border-radius: 0;
@@ -346,7 +365,7 @@ body {
   font-family: var(--font-brand-sans), "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
   font-size: 0.98rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: -0.02em;
   font-feature-settings: "kern" 1;
   -webkit-font-smoothing: antialiased;
 }
@@ -382,17 +401,14 @@ body {
 
 .t5.basicMode {
   background: linear-gradient(180deg, #181b22 0%, #0f1218 100%);
-  border-color: #7f8797;
-  border-width: 2.5px;
-  box-shadow:
-    0 0 0 1px rgba(210, 220, 238, 0.22) inset,
-    0 10px 20px rgba(0, 0, 0, 0.45);
+  border: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
 }
 .t5.basicMode .grid {
   background: linear-gradient(180deg, #151a23 0%, #0d1118 100%);
 }
 .t5.basicMode .photo-slot {
-  border-color: #8b93a3;
+  border: none;
   background: #fff;
 }
 .t5.basicMode .basicBrandTop,
@@ -403,17 +419,14 @@ body {
 
 .t6.basicMode {
   background: linear-gradient(180deg, #ffffff 0%, #f4f6f9 100%);
-  border-color: #bcc3ce;
-  border-width: 2.5px;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.95) inset,
-    0 10px 20px rgba(40, 50, 70, 0.16);
+  border: none;
+  box-shadow: 0 10px 24px rgba(40, 50, 70, 0.12);
 }
 .t6.basicMode .grid {
   background: linear-gradient(180deg, #fbfcfe 0%, #f2f4f8 100%);
 }
 .t6.basicMode .photo-slot {
-  border-color: #d4d9e1;
+  border: none;
   background: #fff;
 }
 .t6.basicMode .basicBrandTop,
@@ -731,10 +744,21 @@ body {
   padding-bottom: 10px;
   gap: 5px;
 }
-.storyMode .photo-slot {
+/* 사진 칸: 검은 아웃라인 (내부 요소 강조) */
+.storyMode .slot.photo-slot {
   border-radius: 0;
-  border-width: 2px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5) inset, 0 4px 8px rgba(0, 0, 0, 0.08);
+  border: 2px solid #141414;
+  box-shadow: none;
+  background-color: #fff;
+}
+.storyMode .slot.photo-slot:hover {
+  border-color: #141414;
+}
+.t1.storyMode .slot.photo-slot,
+.t2.storyMode .slot.photo-slot,
+.t3.storyMode .slot.photo-slot,
+.t4.storyMode .slot.photo-slot {
+  border-color: #141414;
 }
 .t1.storyMode .grid {
   background: #dff5ff;
@@ -795,14 +819,19 @@ body {
 .storySpeech {
   top: 50.2%;
   clip-path: none;
-  border-radius: 999px;
-  padding: 7px 14px;
+  border-radius: 20px;
+  padding: 8px 16px;
   min-width: 136px;
   text-align: center;
-  background: #ffffff;
-  border: 1.5px solid #d9d9d9;
-  color: #222;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  font-family: var(--font-speech-cute), "Gaegu", cursive;
+  font-size: 0.88rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  background: linear-gradient(180deg, #fffefb 0%, #fff5f8 100%);
+  border: 2px solid #1a1a1a;
+  color: #2a2a2a;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.06);
 }
 .speech-green {
   left: 30%;
@@ -827,9 +856,9 @@ body {
   bottom: -9px;
   width: 14px;
   height: 14px;
-  background: #fff;
-  border-left: 1.5px solid #d9d9d9;
-  border-bottom: 1.5px solid #d9d9d9;
+  background: #fff5f8;
+  border-left: 2px solid #1a1a1a;
+  border-bottom: 2px solid #1a1a1a;
   transform: rotate(-40deg);
   border-bottom-left-radius: 3px;
 }
@@ -839,8 +868,8 @@ body {
   right: 34%;
   transform: rotate(40deg);
   border-left: none;
-  border-right: 1.5px solid #d9d9d9;
-  border-bottom: 1.5px solid #d9d9d9;
+  border-right: 2px solid #1a1a1a;
+  border-bottom: 2px solid #1a1a1a;
 }
 .slotChars {
   position: absolute;
@@ -854,6 +883,15 @@ body {
   height: 44px;
   object-fit: contain !important;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2));
+}
+.storyMode .slotChar,
+.storyMode .bigBottomChar {
+  filter:
+    drop-shadow(0 0 0 #111)
+    drop-shadow(0.6px 0 0 #111)
+    drop-shadow(-0.6px 0 0 #111)
+    drop-shadow(0 0.6px 0 #111)
+    drop-shadow(0 -0.6px 0 #111);
 }
 .slotChar1 {
   left: 6px;
@@ -893,6 +931,7 @@ body {
   z-index: 4;
   font-size: 0.86rem;
   pointer-events: none;
+  filter: drop-shadow(0.5px 0 0 #111) drop-shadow(-0.5px 0 0 #111) drop-shadow(0 0.5px 0 #111) drop-shadow(0 -0.5px 0 #111);
 }
 .storyDecor .d1 { left: 8px; top: 46px; }
 .storyDecor .d2 { right: 10px; top: 96px; }
@@ -905,20 +944,16 @@ body {
 .storyDecor .d9 { left: 20px; bottom: 102px; }
 .storyDecor .d10 { right: 24px; bottom: 126px; }
 
-.storyPaws .paw {
+.storyPaws .pawSvg {
   position: absolute;
   z-index: 3;
-  font-size: 3.35rem;
-  opacity: 0.58;
+  width: 42px;
+  height: 50px;
+  opacity: 0.72;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.12));
 }
-.storyPaws .p1 { left: 8px; top: 98px; transform: rotate(-16deg); }
-.storyPaws .p2 { right: 8px; top: 426px; transform: rotate(14deg); }
-.t1 .storyPaws .paw { color: #5da7cc; }
-.t2 .storyPaws .paw { color: #c79b3c; }
-.t3 .storyPaws .paw { color: #9f7ecf; }
-.t4 .storyPaws .paw { color: #d97d8d; }
+.storyPaws .p1 { left: 6px; top: 92px; transform: rotate(-18deg); }
+.storyPaws .p2 { right: 6px; top: 418px; transform: rotate(12deg) scaleX(-1); }
 
 .heroTitle {
   top: 4px;
@@ -958,6 +993,10 @@ body {
 .t2 .storyTape .tape { background: #ffe39b; border: 1px solid #dbb763; }
 .t3 .storyTape .tape { background: #e2d0ff; border: 1px solid #b59bdf; }
 .t4 .storyTape .tape { background: #ffc2c8; border: 1px solid #cc858f; }
+.storyMode .storyTape .tape {
+  border: 1.5px solid #141414;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+}
 
 .ft {
   width: 100%;

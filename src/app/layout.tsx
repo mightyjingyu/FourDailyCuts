@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Jua, Noto_Sans_KR } from "next/font/google";
+import { Gaegu, Jua, Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
 
 const jua = Jua({
@@ -15,6 +15,13 @@ const brandSans = Noto_Sans_KR({
   display: "swap",
 });
 
+const speechCute = Gaegu({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-speech-cute",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "싶개 SIPGAE",
   description: "당신의 일상을 담고 싶개",
@@ -27,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body className={`${jua.variable} ${brandSans.variable}`}>{children}</body>
+      <body className={`${jua.variable} ${brandSans.variable} ${speechCute.variable}`}>{children}</body>
     </html>
   );
 }

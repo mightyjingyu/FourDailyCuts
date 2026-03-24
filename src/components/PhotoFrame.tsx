@@ -84,6 +84,44 @@ function EmptyCharacter() {
   return <div style={{ width: 138, height: 98 }} />;
 }
 
+function HandDrawnPawLeft({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 50 58" fill="none" aria-hidden>
+      <path
+        d="M9.2 40.5c-2.3 5.2 3.2 10.2 9.8 9.6 6.4-.5 12.2-3.2 17.4-5.6 5.2-2.5 7-9.2 4.2-14.4-2.8-5.3-10.6-6-16.4-3.8-5.8 2.1-12.5 8.8-15 14.2z"
+        stroke="#1a1a1a"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="rgba(26,26,26,0.04)"
+      />
+      <path d="M15.2 13.8q2.6-5.2 8-4.4 5.4.9 6.8 5.4" stroke="#1a1a1a" strokeWidth="1.85" strokeLinecap="round" />
+      <path d="M25.4 8.6q1.4-4.6 6.8-4.2 4.4.6 5.4 5.4" stroke="#1a1a1a" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M33.6 11.8q4.2-2.4 8 0 3 2 2.4 6.2" stroke="#1a1a1a" strokeWidth="1.75" strokeLinecap="round" />
+      <path d="M36.4 21q3.8 2.2 4 7-1.4 3.8-5.2 4.4" stroke="#1a1a1a" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HandDrawnPawRight({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 50 58" fill="none" aria-hidden>
+      <path
+        d="M10.8 42.4c-1 5.8 4.8 9.6 11.2 8.4 6.6-1.2 13-5 17.6-8.2 4.6-3.2 5.4-10.6 1-15.2-4.4-4.6-12-2.6-18 1.4-6 4-11.4 9.8-12 13.6z"
+        stroke="#1a1a1a"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="rgba(26,26,26,0.035)"
+      />
+      <path d="M14.6 15q3.4-4.4 8.6-3.2 5 1.2 5.8 6" stroke="#1a1a1a" strokeWidth="1.82" strokeLinecap="round" />
+      <path d="M24 10.2q2-4 7.4-3.6 4.8.4 6 5" stroke="#1a1a1a" strokeWidth="1.78" strokeLinecap="round" />
+      <path d="M32 12.6q4.4-1.8 8.2.8 2.8 1.8 2 6.4" stroke="#1a1a1a" strokeWidth="1.72" strokeLinecap="round" />
+      <path d="M35.4 22q3.2 2.8 3.4 7.2-1 3.6-4.8 4" stroke="#1a1a1a" strokeWidth="1.68" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const THEME_CHARACTER_SRC: Partial<Record<FrameTheme, string>> = {
   green: "/sipgae-dog-cutout.png",
   yellow: "/sipgae-dog-yellow.png",
@@ -235,8 +273,8 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
               <span className="tape tp4" />
             </div>
             <div className="storyPaws" aria-hidden>
-              <span className="paw p1">🐾</span>
-              <span className="paw p2">🐾</span>
+              <HandDrawnPawLeft className="pawSvg p1" />
+              <HandDrawnPawRight className="pawSvg p2" />
             </div>
           </>
         )}
