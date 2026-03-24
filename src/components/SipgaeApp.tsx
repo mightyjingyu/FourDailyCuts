@@ -52,22 +52,7 @@ export function SipgaeApp() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const faceMeshRef = useRef<{
-    send: (input: { image: HTMLVideoElement }) => Promise<void>;
-    close: () => void;
-    setOptions: (options: {
-      maxNumFaces: number;
-      refineLandmarks: boolean;
-      minDetectionConfidence: number;
-      minTrackingConfidence: number;
-    }) => void;
-    onResults: (cb: (results: { multiFaceLandmarks?: { x: number; y: number; z: number }[][] }) => void) => void;
-  } | null>(null);
   const renderRafRef = useRef<number | null>(null);
-  const detectTsRef = useRef(0);
-  const detectBusyRef = useRef(false);
-  const landmarksRef = useRef<{ x: number; y: number; z: number }[] | null>(null);
-  const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const getCenterCropRect = useCallback((srcW: number, srcH: number, targetAspect: number) => {
     const srcAspect = srcW / srcH;
@@ -141,22 +126,11 @@ export function SipgaeApp() {
       preview.width = w;
       preview.height = h;
     }
-
-    let work = workCanvasRef.current;
-    if (!work) {
-      work = document.createElement("canvas");
-      workCanvasRef.current = work;
-    }
-    if (work.width !== w || work.height !== h) {
-      work.width = w;
-      work.height = h;
-    }
-
     const ctx = preview.getContext("2d");
-    const wctx = work.getContext("2d");
-    if (!ctx || !wctx) return;
+    if (!ctx) return;
 
-    // Base frame: mirror + beauty filter
+    // Base frame only: mirror + lighting filter.
+    // Facial reshape (FaceMesh) is intentionally disabled for natural output.
     ctx.save();
     ctx.clearRect(0, 0, w, h);
     ctx.filter = CAMERA_FILTER;
@@ -164,104 +138,6 @@ export function SipgaeApp() {
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, w, h);
     ctx.restore();
-
-    const now = performance.now();
-    const faceMesh = faceMeshRef.current;
-    if (faceMesh && !detectBusyRef.current && now - detectTsRef.current > 66) {
-      detectBusyRef.current = true;
-      detectTsRef.current = now;
-      void faceMesh.send({ image: video }).finally(() => {
-        detectBusyRef.current = false;
-      });
-    }
-
-    const landmarks = landmarksRef.current;
-    if (!landmarks) return;
-
-    // Snapshot current frame for local warps.
-    wctx.clearRect(0, 0, w, h);
-    wctx.drawImage(preview, 0, 0, w, h);
-
-    const p = (idx: number) => {
-      const lm = landmarks[idx];
-      return { x: (1 - lm.x) * w, y: lm.y * h };
-    };
-
-    const leftCheek = p(234);
-    const rightCheek = p(454);
-    const forehead = p(10);
-    const chin = p(152);
-    const faceCx = (leftCheek.x + rightCheek.x) * 0.5;
-    const faceCy = (forehead.y + chin.y) * 0.5;
-    const faceW = Math.max(40, Math.hypot(rightCheek.x - leftCheek.x, rightCheek.y - leftCheek.y));
-    const faceH = Math.max(60, Math.abs(chin.y - forehead.y) * 1.1);
-    const faceWidthRatio = faceW / w;
-
-    // Device/camera FOV differs a lot between local and deployed mobile webviews.
-    // Keep reshape conservative and adapt intensity when face occupies larger area.
-    const slimStrength = faceWidthRatio > 0.4 ? 0.015 : faceWidthRatio > 0.33 ? 0.02 : 0.03;
-    const eyeScale = faceWidthRatio > 0.4 ? 1.03 : faceWidthRatio > 0.33 ? 1.05 : 1.07;
-
-    // V-line: softly squeeze face width while keeping center.
-    const srcW = faceW * 1.04;
-    const srcH = faceH * 1.02;
-    const srcX = faceCx - srcW * 0.5;
-    const srcY = faceCy - srcH * 0.5;
-    const dstW = srcW * (1 - slimStrength);
-    const dstX = faceCx - dstW * 0.5;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(faceCx, faceCy, srcW * 0.47, srcH * 0.52, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.globalAlpha = 0.72;
-    ctx.drawImage(work, srcX, srcY, srcW, srcH, dstX, srcY, dstW, srcH);
-    ctx.restore();
-
-    // Update snapshot after slim-face for eye enlargement pass.
-    wctx.clearRect(0, 0, w, h);
-    wctx.drawImage(preview, 0, 0, w, h);
-
-    const eyeCenter = (a: number, b: number, c: number, d: number) => {
-      const pa = p(a);
-      const pb = p(b);
-      const pc = p(c);
-      const pd = p(d);
-      return {
-        x: (pa.x + pb.x + pc.x + pd.x) * 0.25,
-        y: (pa.y + pb.y + pc.y + pd.y) * 0.25,
-      };
-    };
-
-    const leftEye = eyeCenter(33, 133, 159, 145);
-    const rightEye = eyeCenter(362, 263, 386, 374);
-    const leftCornerA = p(33);
-    const leftCornerB = p(133);
-    const rightCornerA = p(362);
-    const rightCornerB = p(263);
-    const leftR = Math.max(8, Math.hypot(leftCornerA.x - leftCornerB.x, leftCornerA.y - leftCornerB.y) * 0.42);
-    const rightR = Math.max(8, Math.hypot(rightCornerA.x - rightCornerB.x, rightCornerA.y - rightCornerB.y) * 0.42);
-
-    const drawBigEye = (center: { x: number; y: number }, radius: number) => {
-      const sx = center.x - radius;
-      const sy = center.y - radius;
-      const sw = radius * 2;
-      const scale = eyeScale;
-      const dw = sw * scale;
-      const dx = center.x - dw * 0.5;
-      const dy = center.y - dw * 0.5;
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(center.x, center.y, radius * 1.08, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.globalAlpha = 0.82;
-      ctx.drawImage(work!, sx, sy, sw, sw, dx, dy, dw, dw);
-      ctx.restore();
-    };
-
-    drawBigEye(leftEye, leftR);
-    drawBigEye(rightEye, rightR);
   }, []);
 
   useEffect(() => {
@@ -293,41 +169,6 @@ export function SipgaeApp() {
       cancelled = true;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
-    };
-  }, [step]);
-
-  useEffect(() => {
-    if (step !== "shoot") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { FaceMesh } = await import("@mediapipe/face_mesh");
-        const faceMesh = new FaceMesh({
-          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-        });
-        faceMesh.setOptions({
-          maxNumFaces: 1,
-          refineLandmarks: true,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-        });
-        faceMesh.onResults((results: { multiFaceLandmarks?: { x: number; y: number; z: number }[][] }) => {
-          landmarksRef.current = results.multiFaceLandmarks?.[0] ?? null;
-        });
-        if (cancelled) {
-          faceMesh.close();
-          return;
-        }
-        faceMeshRef.current = faceMesh;
-      } catch {
-        faceMeshRef.current = null;
-      }
-    })();
-    return () => {
-      cancelled = true;
-      landmarksRef.current = null;
-      faceMeshRef.current?.close();
-      faceMeshRef.current = null;
     };
   }, [step]);
 
