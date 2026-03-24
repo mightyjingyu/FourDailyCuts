@@ -8,12 +8,33 @@ import { PhotoFrame, type FrameTheme } from "./PhotoFrame";
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-const CAMERA_FILTER = "brightness(1.08) contrast(1.06) saturate(0.9) blur(0.4px)";
-// Beauty warp constants — fixed intensity, no face-detection dependency.
-// Identical output regardless of camera FOV or environment.
-const BEAUTY_SLIM = 0.96;      // 4 % horizontal squeeze (face-slim)
-const BEAUTY_EYE_ZOOM = 1.045; // 4.5 % eye-region scale
-const BEAUTY_EYE_ALPHA = 0.72; // blend opacity keeps effect subtle
+// 미백: 밝기↑ 채도↓ 살짝 소프트닝
+const CAMERA_FILTER = "brightness(1.13) contrast(1.04) saturate(0.78) blur(0.28px)";
+
+// ── 뷰티 보정 상수 (모든 값은 프레임 크기 대비 비율) ──────────────────────
+// 얼굴 갸름 (가로 5 % 압축)
+const B_SLIM       = 0.95;
+// 눈 영역 (가로 확장 > 세로 확장)
+const B_EYE_Y      = 0.38;   // 눈 중심 Y (프레임 높이 대비)
+const B_EYE_DX     = 0.115;  // 눈 중심 X 오프셋 (프레임 너비 대비)
+const B_EYE_RX     = 0.076;  // 눈 영역 x-반경
+const B_EYE_RY     = 0.058;  // 눈 영역 y-반경
+const B_EYE_ZX     = 1.060;  // 눈 가로 확대율
+const B_EYE_ZY     = 1.032;  // 눈 세로 확대율 (가로보다 작게)
+const B_EYE_ALPHA  = 0.85;   // 높은 알파 → 깔끔한 블렌딩 (귀신 효과 방지)
+// 콧볼 축소
+const B_NOSE_Y     = 0.545;  // 코 중심 Y
+const B_NOSE_RX    = 0.068;  // 코 영역 x-반경
+const B_NOSE_RY    = 0.050;  // 코 영역 y-반경
+const B_NOSE_Z     = 0.86;   // 콧볼 가로 압축율
+const B_NOSE_ALPHA = 0.62;
+// 중안부 축소 (눈~코 구간 세로 압축)
+const B_MF_TOP     = 0.415;  // 중안부 시작 Y (눈 바로 아래)
+const B_MF_BOT     = 0.555;  // 중안부 끝 Y (윗입술 위)
+const B_MF_W       = 0.48;   // 적용 너비 비율
+const B_MF_Z       = 0.91;   // 세로 압축율 (9 % 축소)
+const B_MF_ALPHA   = 0.68;
+
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
 const CAPTURE_WIDTH = Math.round(CAPTURE_HEIGHT * SLOT_ASPECT);
@@ -94,8 +115,10 @@ export function SipgaeApp() {
       if (!ctx) return null;
       const { sx, sy, sw, sh } = getCenterCropRect(preview.width, preview.height, SLOT_ASPECT);
       ctx.clearRect(0, 0, c.width, c.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       ctx.drawImage(preview, sx, sy, sw, sh, 0, 0, c.width, c.height);
-      return c.toDataURL("image/jpeg", 0.92);
+      return c.toDataURL("image/jpeg", 0.95);
     }
 
     // Fallback when preview pipeline is not ready.
@@ -111,12 +134,14 @@ export function SipgaeApp() {
     // Preview is mirrored; capture must preserve the same mirror orientation.
     // Filter is applied at draw time so saved frame keeps the same look.
     ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.filter = CAMERA_FILTER;
     ctx.translate(c.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
     ctx.restore();
-    return c.toDataURL("image/jpeg", 0.92);
+    return c.toDataURL("image/jpeg", 0.95);
   }, [getCenterCropRect]);
 
   const drawBeautyWarpFrame = useCallback(() => {
@@ -124,76 +149,123 @@ export function SipgaeApp() {
     const preview = previewCanvasRef.current;
     if (!video || !preview || video.readyState < 2) return;
 
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (!w || !h) return;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
 
-    if (preview.width !== w || preview.height !== h) {
-      preview.width = w;
-      preview.height = h;
+    if (preview.width !== vw || preview.height !== vh) {
+      preview.width = vw;
+      preview.height = vh;
     }
 
-    // Lazy-create off-screen work canvas for multi-pass compositing.
     let work = workCanvasRef.current;
     if (!work) {
       work = document.createElement("canvas");
       workCanvasRef.current = work;
     }
-    if (work.width !== w || work.height !== h) {
-      work.width = w;
-      work.height = h;
+    if (work.width !== vw || work.height !== vh) {
+      work.width = vw;
+      work.height = vh;
     }
 
     const wctx = work.getContext("2d");
     const ctx = preview.getContext("2d");
     if (!ctx || !wctx) return;
 
-    // Pass 1 — mirrored + beauty-lit base frame → work canvas.
+    // 고화질 보간 설정
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    wctx.imageSmoothingEnabled = true;
+    wctx.imageSmoothingQuality = "high";
+
+    // ── Pass 1: 좌우 반전 + 미백 필터 → work ─────────────────────────────
     wctx.save();
-    wctx.clearRect(0, 0, w, h);
+    wctx.clearRect(0, 0, vw, vh);
     wctx.filter = CAMERA_FILTER;
-    wctx.translate(w, 0);
+    wctx.translate(vw, 0);
     wctx.scale(-1, 1);
-    wctx.drawImage(video, 0, 0, w, h);
+    wctx.drawImage(video, 0, 0, vw, vh);
     wctx.restore();
 
-    // Pass 2 — gentle face slimming.
-    // Squeeze the full frame 4 % horizontally; fill the ≈2 % edge strips
-    // by stretching the outermost columns so there are no black bars.
-    // Fixed intensity — no face-detection, consistent across all devices.
-    ctx.clearRect(0, 0, w, h);
-    const strip = Math.round(w * (1 - BEAUTY_SLIM) / 2); // ~2 % each side
+    // ── Pass 2: 얼굴 갸름 (가로 5 % 압축) ───────────────────────────────
+    ctx.clearRect(0, 0, vw, vh);
+    const strip = Math.round(vw * (1 - B_SLIM) / 2);
     if (strip > 0) {
-      ctx.drawImage(work, 0, 0, 3, h, 0, 0, strip, h);           // left fill
-      ctx.drawImage(work, w - 3, 0, 3, h, w - strip, 0, strip, h); // right fill
+      ctx.drawImage(work, 0, 0, 3, vh, 0, 0, strip, vh);
+      ctx.drawImage(work, vw - 3, 0, 3, vh, vw - strip, 0, strip, vh);
     }
-    ctx.drawImage(work, 0, 0, w, h, strip, 0, w - strip * 2, h); // squeezed center
+    ctx.drawImage(work, 0, 0, vw, vh, strip, 0, vw - strip * 2, vh);
 
-    // Pass 3 — subtle eye enlargement.
-    // Assumes a centered selfie pose (eyes at ~38 % height, ±11.5 % from cx).
-    // Fixed region + low alpha keeps the effect invisible when slightly off-center.
-    wctx.clearRect(0, 0, w, h);
-    wctx.drawImage(preview, 0, 0); // sample from already-slimmed frame
+    // work ← 현재 preview 상태로 갱신
+    wctx.clearRect(0, 0, vw, vh);
+    wctx.drawImage(preview, 0, 0);
 
-    const cx = w / 2;
-    const eyeY = h * 0.38;
-    const eyeOffX = w * 0.115;
-    const eyeR = Math.min(w, h) * 0.075;
-    const sw = eyeR * 2;
-    const dw = sw * BEAUTY_EYE_ZOOM;
+    // ── Pass 3: 눈 확대 (가로 > 세로, 타원 클립 + 높은 알파) ─────────────
+    const cx = vw / 2;
+    const eyeY = vh * B_EYE_Y;
+    const eyeOffX = vw * B_EYE_DX;
+    const rx = vw * B_EYE_RX;
+    const ry = vh * B_EYE_RY;
 
     const enlargeEye = (ex: number) => {
+      const sw = rx * 2;
+      const sh = ry * 2;
+      const dw = sw * B_EYE_ZX;
+      const dh = sh * B_EYE_ZY;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(ex, eyeY, eyeR * 0.9, 0, Math.PI * 2);
+      // 클립 영역을 소스보다 약간 작게 → 경계가 자연스럽게 페이드
+      ctx.ellipse(ex, eyeY, rx * 0.86, ry * 0.86, 0, 0, Math.PI * 2);
       ctx.clip();
-      ctx.globalAlpha = BEAUTY_EYE_ALPHA;
-      ctx.drawImage(work, ex - eyeR, eyeY - eyeR, sw, sw, ex - dw / 2, eyeY - dw / 2, dw, dw);
+      ctx.globalAlpha = B_EYE_ALPHA;
+      ctx.drawImage(work, ex - rx, eyeY - ry, sw, sh, ex - dw / 2, eyeY - dh / 2, dw, dh);
       ctx.restore();
     };
 
     enlargeEye(cx - eyeOffX);
     enlargeEye(cx + eyeOffX);
+
+    // work ← 갱신
+    wctx.clearRect(0, 0, vw, vh);
+    wctx.drawImage(preview, 0, 0);
+
+    // ── Pass 4: 콧볼 축소 (코 영역 가로 압축) ───────────────────────────
+    const noseY = vh * B_NOSE_Y;
+    const nrx = vw * B_NOSE_RX;
+    const nry = vh * B_NOSE_RY;
+    const ndw = nrx * 2 * B_NOSE_Z;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, noseY, nrx * 0.82, nry * 0.82, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalAlpha = B_NOSE_ALPHA;
+    ctx.drawImage(work, cx - nrx, noseY - nry, nrx * 2, nry * 2,
+                        cx - ndw / 2, noseY - nry, ndw, nry * 2);
+    ctx.restore();
+
+    // work ← 갱신
+    wctx.clearRect(0, 0, vw, vh);
+    wctx.drawImage(preview, 0, 0);
+
+    // ── Pass 5: 중안부 축소 (눈~코 구간 세로 압축) ──────────────────────
+    const mfTopY = vh * B_MF_TOP;
+    const mfBotY = vh * B_MF_BOT;
+    const mfSrcH = mfBotY - mfTopY;
+    const mfDstH = mfSrcH * B_MF_Z;
+    const mfW = vw * B_MF_W;
+    const mfCY = (mfTopY + mfBotY) / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, mfCY, mfW * 0.44, mfSrcH * 0.44, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalAlpha = B_MF_ALPHA;
+    ctx.drawImage(work,
+      cx - mfW / 2, mfTopY, mfW, mfSrcH,
+      cx - mfW / 2, mfCY - mfDstH / 2, mfW, mfDstH,
+    );
+    ctx.restore();
   }, []);
 
   useEffect(() => {
@@ -207,7 +279,11 @@ export function SipgaeApp() {
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
+          video: {
+            facingMode: "user",
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
+          },
           audio: false,
         });
         if (cancelled) {
