@@ -11,7 +11,7 @@
   "dependencies": {
     "@mediapipe/face_mesh": "^0.4.1633559619",
     "html2canvas": "^1.4.1",
-    "next": "15.3.5",
+    "next": "^15.5.14",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },
@@ -20,7 +20,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "eslint": "^9.16.0",
-    "eslint-config-next": "15.3.5",
+    "eslint-config-next": "^15.5.14",
     "typescript": "^5.7.0"
   }
 }
