@@ -195,20 +195,26 @@ export function SipgaeApp() {
     const faceCy = (forehead.y + chin.y) * 0.5;
     const faceW = Math.max(40, Math.hypot(rightCheek.x - leftCheek.x, rightCheek.y - leftCheek.y));
     const faceH = Math.max(60, Math.abs(chin.y - forehead.y) * 1.1);
+    const faceWidthRatio = faceW / w;
 
-    // V-line: lightly squeeze face region width while keeping center.
-    const srcW = faceW * 1.08;
-    const srcH = faceH * 1.05;
+    // Device/camera FOV differs a lot between local and deployed mobile webviews.
+    // Keep reshape conservative and adapt intensity when face occupies larger area.
+    const slimStrength = faceWidthRatio > 0.4 ? 0.015 : faceWidthRatio > 0.33 ? 0.02 : 0.03;
+    const eyeScale = faceWidthRatio > 0.4 ? 1.03 : faceWidthRatio > 0.33 ? 1.05 : 1.07;
+
+    // V-line: softly squeeze face width while keeping center.
+    const srcW = faceW * 1.04;
+    const srcH = faceH * 1.02;
     const srcX = faceCx - srcW * 0.5;
     const srcY = faceCy - srcH * 0.5;
-    const dstW = srcW * 0.92;
+    const dstW = srcW * (1 - slimStrength);
     const dstX = faceCx - dstW * 0.5;
 
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(faceCx, faceCy, srcW * 0.47, srcH * 0.52, 0, 0, Math.PI * 2);
     ctx.clip();
-    ctx.globalAlpha = 0.92;
+    ctx.globalAlpha = 0.72;
     ctx.drawImage(work, srcX, srcY, srcW, srcH, dstX, srcY, dstW, srcH);
     ctx.restore();
 
@@ -233,14 +239,14 @@ export function SipgaeApp() {
     const leftCornerB = p(133);
     const rightCornerA = p(362);
     const rightCornerB = p(263);
-    const leftR = Math.max(8, Math.hypot(leftCornerA.x - leftCornerB.x, leftCornerA.y - leftCornerB.y) * 0.46);
-    const rightR = Math.max(8, Math.hypot(rightCornerA.x - rightCornerB.x, rightCornerA.y - rightCornerB.y) * 0.46);
+    const leftR = Math.max(8, Math.hypot(leftCornerA.x - leftCornerB.x, leftCornerA.y - leftCornerB.y) * 0.42);
+    const rightR = Math.max(8, Math.hypot(rightCornerA.x - rightCornerB.x, rightCornerA.y - rightCornerB.y) * 0.42);
 
     const drawBigEye = (center: { x: number; y: number }, radius: number) => {
       const sx = center.x - radius;
       const sy = center.y - radius;
       const sw = radius * 2;
-      const scale = 1.16;
+      const scale = eyeScale;
       const dw = sw * scale;
       const dx = center.x - dw * 0.5;
       const dy = center.y - dw * 0.5;
@@ -249,7 +255,7 @@ export function SipgaeApp() {
       ctx.beginPath();
       ctx.arc(center.x, center.y, radius * 1.08, 0, Math.PI * 2);
       ctx.clip();
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.82;
       ctx.drawImage(work!, sx, sy, sw, sw, dx, dy, dw, dw);
       ctx.restore();
     };
