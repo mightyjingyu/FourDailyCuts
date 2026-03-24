@@ -56,6 +56,12 @@ body {
   animation: cardBob 3.5s ease-in-out infinite;
 }
 
+/* 싶개 프레임: 기본 프레임처럼 직각·정지 (둥근 모서리·살짝 휘는 애니메이션 제거) */
+.card.storyMode {
+  border-radius: 0;
+  animation: none;
+}
+
 .card.captureStatic,
 .card.captureStatic * {
   animation: none !important;
@@ -337,9 +343,12 @@ body {
   top: 10px;
   left: 18px;
   z-index: 8;
-  font-size: 1.05rem;
-  font-weight: 900;
-  letter-spacing: 0.2px;
+  font-family: var(--font-brand-sans), "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-feature-settings: "kern" 1;
+  -webkit-font-smoothing: antialiased;
 }
 .basicSide {
   position: absolute;
