@@ -8,11 +8,11 @@ import { PhotoFrame, type FrameTheme } from "./PhotoFrame";
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-// 미백: 밝기↑ 채도↓ 부드러운 피부 표현
-const CAMERA_FILTER = "brightness(1.13) contrast(1.04) saturate(0.78) blur(0.28px)";
-const BEAUTY_SLIM      = 0.94;   // 6 % 가로 압축 (얼굴 슬림)
-const BEAUTY_EYE_ZOOM  = 1.05;   // 5 % 눈 확대 (FaceDetector 사용 시에만 적용)
-const BEAUTY_EYE_ALPHA = 0.84;   // 높은 알파 → ghosting 방지
+// 포토이즘 필터: 가장 '뽀얀' 느낌의 조합
+const CAMERA_FILTER    = "contrast(1.1) brightness(1.1) saturate(1.05) blur(0.3px)";
+const BEAUTY_SLIM      = 0.97;   // V-line: 3 % 가로 압축 (자연스러운 슬림)
+const BEAUTY_EYE_ZOOM  = 1.05;   // 눈 5 % 확대
+const BEAUTY_EYE_ALPHA = 0.84;
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
 const CAPTURE_WIDTH = Math.round(CAPTURE_HEIGHT * SLOT_ASPECT);
@@ -58,10 +58,16 @@ export function SipgaeApp() {
   const streamRef = useRef<MediaStream | null>(null);
   const renderRafRef = useRef<number | null>(null);
   const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  // FaceDetector (Chrome/Edge only) — Safari에선 아예 미사용
+  // FaceDetector (Chrome/Edge only) — Safari에선 눈·중안부 보정 스킵
   const faceDetRef = useRef<unknown>(null);
-  const faceEyesRef = useRef<[number, number, number, number] | null>(null); // [x1,y1,x2,y2] 미러 좌표
   const lastDetectMsRef = useRef(0);
+  // 검출된 얼굴 데이터 캐시 (미러 좌표계)
+  const faceDataRef = useRef<{
+    bbox: { cx: number; cy: number; w: number; h: number };
+    eyes: [{ x: number; y: number }, { x: number; y: number }];
+    nose: { x: number; y: number } | null;
+    mouth: { x: number; y: number } | null;
+  } | null>(null);
 
   const getCenterCropRect = useCallback((srcW: number, srcH: number, targetAspect: number) => {
     const srcAspect = srcW / srcH;
@@ -155,7 +161,7 @@ export function SipgaeApp() {
     wctx.imageSmoothingEnabled = true;
     wctx.imageSmoothingQuality = "high";
 
-    // ── Pass 1: 좌우 반전 + 미백 필터 → work ─────────────────────────────
+    // ── Pass 1: 좌우 반전 + 포토이즘 필터 → work ─────────────────────────
     wctx.save();
     wctx.clearRect(0, 0, vw, vh);
     wctx.filter = CAMERA_FILTER;
@@ -164,17 +170,31 @@ export function SipgaeApp() {
     wctx.drawImage(video, 0, 0, vw, vh);
     wctx.restore();
 
-    // ── Pass 2: 얼굴 슬림 (가로 6 % 압축, 좌우 가장자리 자연 채움) ─────────
+    // ── Pass 2: V-line 슬림 (얼굴 중심 기준 scale 0.97x) ────────────────
+    // FaceDetector 사용 가능하면 검출된 얼굴 중심, 아니면 프레임 중심
+    const fcx = faceDataRef.current?.bbox.cx ?? vw / 2;
+    const leftGap  = Math.ceil(fcx * (1 - BEAUTY_SLIM));
+    const rightGap = Math.ceil((vw - fcx) * (1 - BEAUTY_SLIM));
     ctx.clearRect(0, 0, vw, vh);
-    const strip = Math.round(vw * (1 - BEAUTY_SLIM) / 2);
-    if (strip > 0) {
-      ctx.drawImage(work, 0, 0, 3, vh, 0, 0, strip, vh);
-      ctx.drawImage(work, vw - 3, 0, 3, vh, vw - strip, 0, strip, vh);
-    }
-    ctx.drawImage(work, 0, 0, vw, vh, strip, 0, vw - strip * 2, vh);
+    ctx.save();
+    ctx.translate(fcx, 0);
+    ctx.scale(BEAUTY_SLIM, 1);
+    ctx.translate(-fcx, 0);
+    ctx.drawImage(work, 0, 0, vw, vh);
+    ctx.restore();
+    // 가장자리 빈 공간 채움
+    if (leftGap > 0)  ctx.drawImage(work, 0, 0, 1, vh, 0, 0, leftGap + 1, vh);
+    if (rightGap > 0) ctx.drawImage(work, vw - 1, 0, 1, vh, vw - rightGap - 1, 0, rightGap + 1, vh);
 
-    // ── Pass 3: FaceDetector 기반 눈 확대 (Chrome/Edge only) ─────────────
-    // Safari 등 미지원 환경에선 이 블록 전체 스킵 → 고정 좌표 보정 없음
+    // ── Pass 3: 피치-핑크 soft-light 오버레이 (포토이즘 피부 색감) ─────────
+    ctx.save();
+    ctx.globalCompositeOperation = "soft-light";
+    ctx.globalAlpha = 0.14;
+    ctx.fillStyle = "#FFCBA4";
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.restore();
+
+    // ── FaceDetector 비동기 갱신 (120 ms 쓰로틀) ─────────────────────────
     const now = Date.now();
     if (now - lastDetectMsRef.current > 120 && "FaceDetector" in window) {
       lastDetectMsRef.current = now;
@@ -182,68 +202,138 @@ export function SipgaeApp() {
         try {
           if (!faceDetRef.current) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            faceDetRef.current = new (window as any).FaceDetector({
-              fastMode: true,
-              maxDetectedFaces: 1,
-            });
+            faceDetRef.current = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const faces = await (faceDetRef.current as any).detect(video);
-          if (!faces.length) { faceEyesRef.current = null; return; }
+          if (!faces.length) { faceDataRef.current = null; return; }
 
           const face = faces[0];
-          const eyes = face.landmarks?.filter((l: { type: string }) => l.type === "eye");
-          let x1: number, y1: number, x2: number, y2: number;
+          const bb   = face.boundingBox;
+          // 미러 좌표 변환 헬퍼
+          const mx = (x: number) => vw - x;
 
-          if (eyes?.length >= 2) {
-            // FaceDetector는 원본(비미러) 좌표 → 캔버스 미러 좌표로 변환
-            x1 = vw - eyes[0].locations[0].x;
-            y1 = eyes[0].locations[0].y;
-            x2 = vw - eyes[1].locations[0].x;
-            y2 = eyes[1].locations[0].y;
+          // bbox (미러)
+          const bbox = {
+            cx: mx(bb.x + bb.width / 2),
+            cy: bb.y + bb.height / 2,
+            w: bb.width,
+            h: bb.height,
+          };
+
+          // 랜드마크 파싱
+          type Lm = { type: string; locations: { x: number; y: number }[] };
+          const lms: Lm[] = face.landmarks ?? [];
+          const eyeLms  = lms.filter((l) => l.type === "eye");
+          const noseLm  = lms.find((l) => l.type === "nose");
+          const mouthLm = lms.find((l) => l.type === "mouth");
+
+          let eyes: [{ x: number; y: number }, { x: number; y: number }];
+          if (eyeLms.length >= 2) {
+            eyes = [
+              { x: mx(eyeLms[0].locations[0].x), y: eyeLms[0].locations[0].y },
+              { x: mx(eyeLms[1].locations[0].x), y: eyeLms[1].locations[0].y },
+            ];
           } else {
-            // landmarks 없으면 bounding box에서 추정
-            const bb = face.boundingBox;
-            y1 = y2 = bb.y + bb.height * 0.36;
-            x1 = vw - (bb.x + bb.width * 0.28);
-            x2 = vw - (bb.x + bb.width * 0.72);
+            eyes = [
+              { x: mx(bb.x + bb.width * 0.28), y: bb.y + bb.height * 0.36 },
+              { x: mx(bb.x + bb.width * 0.72), y: bb.y + bb.height * 0.36 },
+            ];
           }
 
-          // 부드러운 이동 (jitter 방지)
-          const prev = faceEyesRef.current;
+          const nose  = noseLm  ? { x: mx(noseLm.locations[0].x),  y: noseLm.locations[0].y  } : null;
+          const mouth = mouthLm ? { x: mx(mouthLm.locations[0].x), y: mouthLm.locations[0].y } : null;
+
+          // lerp 스무딩으로 jitter 방지
+          const prev = faceDataRef.current;
           const s = 0.28;
-          faceEyesRef.current = prev
-            ? [prev[0]*(1-s)+x1*s, prev[1]*(1-s)+y1*s, prev[2]*(1-s)+x2*s, prev[3]*(1-s)+y2*s]
-            : [x1, y1, x2, y2];
+          const lerp = (a: number, b: number) => prev ? a * (1 - s) + b * s : b;
+          faceDataRef.current = {
+            bbox: {
+              cx: lerp(prev?.bbox.cx ?? bbox.cx, bbox.cx),
+              cy: lerp(prev?.bbox.cy ?? bbox.cy, bbox.cy),
+              w:  lerp(prev?.bbox.w  ?? bbox.w,  bbox.w),
+              h:  lerp(prev?.bbox.h  ?? bbox.h,  bbox.h),
+            },
+            eyes: [
+              { x: lerp(prev?.eyes[0].x ?? eyes[0].x, eyes[0].x), y: lerp(prev?.eyes[0].y ?? eyes[0].y, eyes[0].y) },
+              { x: lerp(prev?.eyes[1].x ?? eyes[1].x, eyes[1].x), y: lerp(prev?.eyes[1].y ?? eyes[1].y, eyes[1].y) },
+            ],
+            nose:  nose  ? { x: lerp(prev?.nose?.x  ?? nose.x,  nose.x),  y: lerp(prev?.nose?.y  ?? nose.y,  nose.y)  } : null,
+            mouth: mouth ? { x: lerp(prev?.mouth?.x ?? mouth.x, mouth.x), y: lerp(prev?.mouth?.y ?? mouth.y, mouth.y) } : null,
+          };
         } catch { /* ignore */ }
       })();
     }
 
-    if (faceEyesRef.current) {
+    // ── FaceDetector 데이터가 있을 때만 적용되는 보정 ─────────────────────
+    const fd = faceDataRef.current;
+    if (!fd) return;
+
+    // work ← 현재 preview 스냅샷
+    wctx.clearRect(0, 0, vw, vh);
+    wctx.drawImage(preview, 0, 0);
+
+    // ── Pass 4: 중안부 축소 (코 좌표 기준 인중 위로 당기기) ──────────────
+    if (fd.nose) {
+      const noseY  = fd.nose.y;
+      const faceW  = fd.bbox.w;
+      const faceH  = fd.bbox.h;
+      const zoneTop = noseY - faceH * 0.08;
+      const zoneBot = noseY + faceH * 0.22;
+      const zoneH   = zoneBot - zoneTop;
+      const dstH    = zoneH * 0.96;   // 4 % 세로 압축
+      const shift   = zoneH * 0.04;   // 위로 시프트
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(fd.bbox.cx, noseY + faceH * 0.07, faceW * 0.28, zoneH * 0.46, 0, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.globalAlpha = 0.72;
+      ctx.drawImage(
+        work,
+        fd.bbox.cx - faceW * 0.28, zoneTop,          faceW * 0.56, zoneH,
+        fd.bbox.cx - faceW * 0.28, zoneTop - shift,   faceW * 0.56, dstH,
+      );
+      ctx.restore();
+
+      // work 갱신
       wctx.clearRect(0, 0, vw, vh);
       wctx.drawImage(preview, 0, 0);
-
-      const eyeR = Math.min(vw, vh) * 0.075;
-      const srcSide = eyeR * 2;
-      const dstSide = srcSide * BEAUTY_EYE_ZOOM;
-
-      const enlargeEye = (ex: number, ey: number) => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(ex, ey, eyeR * 0.88, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.globalAlpha = BEAUTY_EYE_ALPHA;
-        ctx.drawImage(
-          work,
-          ex - eyeR, ey - eyeR, srcSide, srcSide,
-          ex - dstSide / 2, ey - dstSide / 2, dstSide, dstSide,
-        );
-        ctx.restore();
-      };
-
-      enlargeEye(faceEyesRef.current[0], faceEyesRef.current[1]);
-      enlargeEye(faceEyesRef.current[2], faceEyesRef.current[3]);
     }
+
+    // ── Pass 5: 눈 확대 (얼굴폭 * 0.1 반경, magnify) ─────────────────────
+    const eyeR    = fd.bbox.w * 0.10;
+    const srcSide = eyeR * 2;
+    const dstSide = srcSide * BEAUTY_EYE_ZOOM;
+
+    const enlargeEye = (ex: number, ey: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ex, ey, eyeR * 0.88, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.globalAlpha = BEAUTY_EYE_ALPHA;
+      ctx.drawImage(work, ex - eyeR, ey - eyeR, srcSide, srcSide, ex - dstSide / 2, ey - dstSide / 2, dstSide, dstSide);
+      ctx.restore();
+    };
+
+    enlargeEye(fd.eyes[0].x, fd.eyes[0].y);
+    enlargeEye(fd.eyes[1].x, fd.eyes[1].y);
+
+    // ── Pass 6: 캐치라이트 (눈에 생기 도트) ──────────────────────────────
+    const clR = Math.max(2, eyeR * 0.07);
+    const drawCatchlight = (ex: number, ey: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ex - eyeR * 0.15, ey - eyeR * 0.28, clR, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.globalAlpha = 0.60;
+      ctx.fill();
+      ctx.restore();
+    };
+
+    drawCatchlight(fd.eyes[0].x, fd.eyes[0].y);
+    drawCatchlight(fd.eyes[1].x, fd.eyes[1].y);
   }, []);
 
   useEffect(() => {
