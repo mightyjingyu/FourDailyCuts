@@ -8,12 +8,11 @@ import { PhotoFrame, type FrameTheme } from "./PhotoFrame";
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-const CAMERA_FILTER = "brightness(1.08) contrast(1.06) saturate(0.9) blur(0.4px)";
-// Beauty warp constants — fixed intensity, no face-detection dependency.
-// Identical output regardless of camera FOV or environment.
-const BEAUTY_SLIM = 0.96;      // 4 % horizontal squeeze (face-slim)
-const BEAUTY_EYE_ZOOM = 1.045; // 4.5 % eye-region scale
-const BEAUTY_EYE_ALPHA = 0.72; // blend opacity keeps effect subtle
+// 미백: 밝기↑ 채도↓ 부드러운 피부 표현
+const CAMERA_FILTER = "brightness(1.13) contrast(1.04) saturate(0.78) blur(0.28px)";
+const BEAUTY_SLIM      = 0.94;   // 6 % 가로 압축 (얼굴 슬림)
+const BEAUTY_EYE_ZOOM  = 1.05;   // 5 % 눈 확대 (FaceDetector 사용 시에만 적용)
+const BEAUTY_EYE_ALPHA = 0.84;   // 높은 알파 → ghosting 방지
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
 const CAPTURE_WIDTH = Math.round(CAPTURE_HEIGHT * SLOT_ASPECT);
@@ -59,6 +58,10 @@ export function SipgaeApp() {
   const streamRef = useRef<MediaStream | null>(null);
   const renderRafRef = useRef<number | null>(null);
   const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // FaceDetector (Chrome/Edge only) — Safari에선 아예 미사용
+  const faceDetRef = useRef<unknown>(null);
+  const faceEyesRef = useRef<[number, number, number, number] | null>(null); // [x1,y1,x2,y2] 미러 좌표
+  const lastDetectMsRef = useRef(0);
 
   const getCenterCropRect = useCallback((srcW: number, srcH: number, targetAspect: number) => {
     const srcAspect = srcW / srcH;
@@ -95,7 +98,7 @@ export function SipgaeApp() {
       const { sx, sy, sw, sh } = getCenterCropRect(preview.width, preview.height, SLOT_ASPECT);
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.drawImage(preview, sx, sy, sw, sh, 0, 0, c.width, c.height);
-      return c.toDataURL("image/jpeg", 0.92);
+      return c.toDataURL("image/jpeg", 0.95);
     }
 
     // Fallback when preview pipeline is not ready.
@@ -116,7 +119,7 @@ export function SipgaeApp() {
     ctx.scale(-1, 1);
     ctx.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
     ctx.restore();
-    return c.toDataURL("image/jpeg", 0.92);
+    return c.toDataURL("image/jpeg", 0.95);
   }, [getCenterCropRect]);
 
   const drawBeautyWarpFrame = useCallback(() => {
@@ -124,76 +127,123 @@ export function SipgaeApp() {
     const preview = previewCanvasRef.current;
     if (!video || !preview || video.readyState < 2) return;
 
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (!w || !h) return;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
 
-    if (preview.width !== w || preview.height !== h) {
-      preview.width = w;
-      preview.height = h;
+    if (preview.width !== vw || preview.height !== vh) {
+      preview.width = vw;
+      preview.height = vh;
     }
 
-    // Lazy-create off-screen work canvas for multi-pass compositing.
     let work = workCanvasRef.current;
     if (!work) {
       work = document.createElement("canvas");
       workCanvasRef.current = work;
     }
-    if (work.width !== w || work.height !== h) {
-      work.width = w;
-      work.height = h;
+    if (work.width !== vw || work.height !== vh) {
+      work.width = vw;
+      work.height = vh;
     }
 
     const wctx = work.getContext("2d");
     const ctx = preview.getContext("2d");
     if (!ctx || !wctx) return;
 
-    // Pass 1 — mirrored + beauty-lit base frame → work canvas.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    wctx.imageSmoothingEnabled = true;
+    wctx.imageSmoothingQuality = "high";
+
+    // ── Pass 1: 좌우 반전 + 미백 필터 → work ─────────────────────────────
     wctx.save();
-    wctx.clearRect(0, 0, w, h);
+    wctx.clearRect(0, 0, vw, vh);
     wctx.filter = CAMERA_FILTER;
-    wctx.translate(w, 0);
+    wctx.translate(vw, 0);
     wctx.scale(-1, 1);
-    wctx.drawImage(video, 0, 0, w, h);
+    wctx.drawImage(video, 0, 0, vw, vh);
     wctx.restore();
 
-    // Pass 2 — gentle face slimming.
-    // Squeeze the full frame 4 % horizontally; fill the ≈2 % edge strips
-    // by stretching the outermost columns so there are no black bars.
-    // Fixed intensity — no face-detection, consistent across all devices.
-    ctx.clearRect(0, 0, w, h);
-    const strip = Math.round(w * (1 - BEAUTY_SLIM) / 2); // ~2 % each side
+    // ── Pass 2: 얼굴 슬림 (가로 6 % 압축, 좌우 가장자리 자연 채움) ─────────
+    ctx.clearRect(0, 0, vw, vh);
+    const strip = Math.round(vw * (1 - BEAUTY_SLIM) / 2);
     if (strip > 0) {
-      ctx.drawImage(work, 0, 0, 3, h, 0, 0, strip, h);           // left fill
-      ctx.drawImage(work, w - 3, 0, 3, h, w - strip, 0, strip, h); // right fill
+      ctx.drawImage(work, 0, 0, 3, vh, 0, 0, strip, vh);
+      ctx.drawImage(work, vw - 3, 0, 3, vh, vw - strip, 0, strip, vh);
     }
-    ctx.drawImage(work, 0, 0, w, h, strip, 0, w - strip * 2, h); // squeezed center
+    ctx.drawImage(work, 0, 0, vw, vh, strip, 0, vw - strip * 2, vh);
 
-    // Pass 3 — subtle eye enlargement.
-    // Assumes a centered selfie pose (eyes at ~38 % height, ±11.5 % from cx).
-    // Fixed region + low alpha keeps the effect invisible when slightly off-center.
-    wctx.clearRect(0, 0, w, h);
-    wctx.drawImage(preview, 0, 0); // sample from already-slimmed frame
+    // ── Pass 3: FaceDetector 기반 눈 확대 (Chrome/Edge only) ─────────────
+    // Safari 등 미지원 환경에선 이 블록 전체 스킵 → 고정 좌표 보정 없음
+    const now = Date.now();
+    if (now - lastDetectMsRef.current > 120 && "FaceDetector" in window) {
+      lastDetectMsRef.current = now;
+      (async () => {
+        try {
+          if (!faceDetRef.current) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            faceDetRef.current = new (window as any).FaceDetector({
+              fastMode: true,
+              maxDetectedFaces: 1,
+            });
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const faces = await (faceDetRef.current as any).detect(video);
+          if (!faces.length) { faceEyesRef.current = null; return; }
 
-    const cx = w / 2;
-    const eyeY = h * 0.38;
-    const eyeOffX = w * 0.115;
-    const eyeR = Math.min(w, h) * 0.075;
-    const sw = eyeR * 2;
-    const dw = sw * BEAUTY_EYE_ZOOM;
+          const face = faces[0];
+          const eyes = face.landmarks?.filter((l: { type: string }) => l.type === "eye");
+          let x1: number, y1: number, x2: number, y2: number;
 
-    const enlargeEye = (ex: number) => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(ex, eyeY, eyeR * 0.9, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.globalAlpha = BEAUTY_EYE_ALPHA;
-      ctx.drawImage(work, ex - eyeR, eyeY - eyeR, sw, sw, ex - dw / 2, eyeY - dw / 2, dw, dw);
-      ctx.restore();
-    };
+          if (eyes?.length >= 2) {
+            // FaceDetector는 원본(비미러) 좌표 → 캔버스 미러 좌표로 변환
+            x1 = vw - eyes[0].locations[0].x;
+            y1 = eyes[0].locations[0].y;
+            x2 = vw - eyes[1].locations[0].x;
+            y2 = eyes[1].locations[0].y;
+          } else {
+            // landmarks 없으면 bounding box에서 추정
+            const bb = face.boundingBox;
+            y1 = y2 = bb.y + bb.height * 0.36;
+            x1 = vw - (bb.x + bb.width * 0.28);
+            x2 = vw - (bb.x + bb.width * 0.72);
+          }
 
-    enlargeEye(cx - eyeOffX);
-    enlargeEye(cx + eyeOffX);
+          // 부드러운 이동 (jitter 방지)
+          const prev = faceEyesRef.current;
+          const s = 0.28;
+          faceEyesRef.current = prev
+            ? [prev[0]*(1-s)+x1*s, prev[1]*(1-s)+y1*s, prev[2]*(1-s)+x2*s, prev[3]*(1-s)+y2*s]
+            : [x1, y1, x2, y2];
+        } catch { /* ignore */ }
+      })();
+    }
+
+    if (faceEyesRef.current) {
+      wctx.clearRect(0, 0, vw, vh);
+      wctx.drawImage(preview, 0, 0);
+
+      const eyeR = Math.min(vw, vh) * 0.075;
+      const srcSide = eyeR * 2;
+      const dstSide = srcSide * BEAUTY_EYE_ZOOM;
+
+      const enlargeEye = (ex: number, ey: number) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(ex, ey, eyeR * 0.88, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.globalAlpha = BEAUTY_EYE_ALPHA;
+        ctx.drawImage(
+          work,
+          ex - eyeR, ey - eyeR, srcSide, srcSide,
+          ex - dstSide / 2, ey - dstSide / 2, dstSide, dstSide,
+        );
+        ctx.restore();
+      };
+
+      enlargeEye(faceEyesRef.current[0], faceEyesRef.current[1]);
+      enlargeEye(faceEyesRef.current[2], faceEyesRef.current[3]);
+    }
   }, []);
 
   useEffect(() => {
@@ -207,7 +257,7 @@ export function SipgaeApp() {
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
+          video: { facingMode: "user", width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 } },
           audio: false,
         });
         if (cancelled) {
