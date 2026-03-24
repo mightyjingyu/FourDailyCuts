@@ -215,6 +215,9 @@ export function SipgaeApp() {
 
   useEffect(() => {
     if (step !== "shoot" || filled >= 4) return;
+    // Ensure stale flash state does not leak into a new shoot session.
+    setShotFxOn(false);
+    setShotNotice(null);
     setTick(7);
     const id = window.setInterval(() => {
       setTick((s) => (s <= 1 ? 7 : s - 1));
@@ -305,6 +308,9 @@ export function SipgaeApp() {
     setPhotos([...EMPTY]);
     setCamError(null);
     setPaymentOpen(false);
+    setShotFxOn(false);
+    setShotNotice(null);
+    setTick(7);
   };
 
   return (
