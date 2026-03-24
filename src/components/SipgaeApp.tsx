@@ -8,7 +8,12 @@ import { PhotoFrame, type FrameTheme } from "./PhotoFrame";
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-const CAMERA_FILTER = "brightness(1.1) contrast(1.1) saturate(0.9) blur(0.5px)";
+const CAMERA_FILTER = "brightness(1.08) contrast(1.06) saturate(0.9) blur(0.4px)";
+// Beauty warp constants — fixed intensity, no face-detection dependency.
+// Identical output regardless of camera FOV or environment.
+const BEAUTY_SLIM = 0.96;      // 4 % horizontal squeeze (face-slim)
+const BEAUTY_EYE_ZOOM = 1.045; // 4.5 % eye-region scale
+const BEAUTY_EYE_ALPHA = 0.72; // blend opacity keeps effect subtle
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
 const CAPTURE_WIDTH = Math.round(CAPTURE_HEIGHT * SLOT_ASPECT);
@@ -53,6 +58,7 @@ export function SipgaeApp() {
   const frameRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const renderRafRef = useRef<number | null>(null);
+  const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const getCenterCropRect = useCallback((srcW: number, srcH: number, targetAspect: number) => {
     const srcAspect = srcW / srcH;
@@ -126,18 +132,68 @@ export function SipgaeApp() {
       preview.width = w;
       preview.height = h;
     }
-    const ctx = preview.getContext("2d");
-    if (!ctx) return;
 
-    // Base frame only: mirror + lighting filter.
-    // Facial reshape (FaceMesh) is intentionally disabled for natural output.
-    ctx.save();
+    // Lazy-create off-screen work canvas for multi-pass compositing.
+    let work = workCanvasRef.current;
+    if (!work) {
+      work = document.createElement("canvas");
+      workCanvasRef.current = work;
+    }
+    if (work.width !== w || work.height !== h) {
+      work.width = w;
+      work.height = h;
+    }
+
+    const wctx = work.getContext("2d");
+    const ctx = preview.getContext("2d");
+    if (!ctx || !wctx) return;
+
+    // Pass 1 — mirrored + beauty-lit base frame → work canvas.
+    wctx.save();
+    wctx.clearRect(0, 0, w, h);
+    wctx.filter = CAMERA_FILTER;
+    wctx.translate(w, 0);
+    wctx.scale(-1, 1);
+    wctx.drawImage(video, 0, 0, w, h);
+    wctx.restore();
+
+    // Pass 2 — gentle face slimming.
+    // Squeeze the full frame 4 % horizontally; fill the ≈2 % edge strips
+    // by stretching the outermost columns so there are no black bars.
+    // Fixed intensity — no face-detection, consistent across all devices.
     ctx.clearRect(0, 0, w, h);
-    ctx.filter = CAMERA_FILTER;
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, w, h);
-    ctx.restore();
+    const strip = Math.round(w * (1 - BEAUTY_SLIM) / 2); // ~2 % each side
+    if (strip > 0) {
+      ctx.drawImage(work, 0, 0, 3, h, 0, 0, strip, h);           // left fill
+      ctx.drawImage(work, w - 3, 0, 3, h, w - strip, 0, strip, h); // right fill
+    }
+    ctx.drawImage(work, 0, 0, w, h, strip, 0, w - strip * 2, h); // squeezed center
+
+    // Pass 3 — subtle eye enlargement.
+    // Assumes a centered selfie pose (eyes at ~38 % height, ±11.5 % from cx).
+    // Fixed region + low alpha keeps the effect invisible when slightly off-center.
+    wctx.clearRect(0, 0, w, h);
+    wctx.drawImage(preview, 0, 0); // sample from already-slimmed frame
+
+    const cx = w / 2;
+    const eyeY = h * 0.38;
+    const eyeOffX = w * 0.115;
+    const eyeR = Math.min(w, h) * 0.075;
+    const sw = eyeR * 2;
+    const dw = sw * BEAUTY_EYE_ZOOM;
+
+    const enlargeEye = (ex: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ex, eyeY, eyeR * 0.9, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.globalAlpha = BEAUTY_EYE_ALPHA;
+      ctx.drawImage(work, ex - eyeR, eyeY - eyeR, sw, sw, ex - dw / 2, eyeY - dw / 2, dw, dw);
+      ctx.restore();
+    };
+
+    enlargeEye(cx - eyeOffX);
+    enlargeEye(cx + eyeOffX);
   }, []);
 
   useEffect(() => {
