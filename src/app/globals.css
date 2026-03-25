@@ -469,6 +469,17 @@ body {
   color: #b8d2ff;
 }
 
+.t8 {
+  background: #fff;
+  border-color: transparent;
+}
+
+/* 자퇴할개 에디션: 원본처럼 완전 직사각형 카드 */
+.card.t8 {
+  border-radius: 0;
+  border: none;
+}
+
 .hd {
   width: 100%;
   padding: 8px 10px 6px;
@@ -477,6 +488,49 @@ body {
   align-items: center;
   gap: 4px;
   position: relative;
+}
+
+.editionCanvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+
+.editionFrameBg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 3;
+  pointer-events: none;
+  user-select: none;
+}
+
+.edition-slot {
+  position: absolute;
+  overflow: hidden;
+  background: #fff;
+  z-index: 1;
+}
+
+.edition-slot img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.edition-slot-placeholder {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.35);
 }
 .hdBottom .char-wrap {
   transform: scale(1);

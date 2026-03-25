@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
+import dropoutEditionFrame from "../../자퇴할개프레임.png";
 
 export type FrameTheme =
   | "green"
@@ -8,7 +9,8 @@ export type FrameTheme =
   | "purple"
   | "red"
   | "basicBlack"
-  | "basicWhite";
+  | "basicWhite"
+  | "dailyEditionDropout";
 
 const THEME_CLASS: Record<FrameTheme, string> = {
   green: "t1",
@@ -17,6 +19,7 @@ const THEME_CLASS: Record<FrameTheme, string> = {
   red: "t4",
   basicBlack: "t5",
   basicWhite: "t6",
+  dailyEditionDropout: "t8",
 };
 
 type PhotoFrameProps = {
@@ -181,6 +184,13 @@ const THEME_META: Record<
     slotIco: "📷",
     divIcos: ["•", "•", "•"],
   },
+  dailyEditionDropout: {
+    tag: "일상네컷 에디션",
+    ftMain: "일상네컷 에디션",
+    ftSub: "DAILY EDITION",
+    slotIco: "📷",
+    divIcos: ["•", "•", "•"],
+  },
 };
 
 function SlotCell({
@@ -206,11 +216,46 @@ function SlotCell({
   );
 }
 
+function EditionSlot({
+  src,
+  readonly,
+  hideEmptyUi = false,
+  xPct,
+  yPct,
+  wPct,
+  hPct,
+}: {
+  src: string | null;
+  readonly?: boolean;
+  hideEmptyUi?: boolean;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+}) {
+  const filled = Boolean(src);
+  return (
+    <div
+      className={`edition-slot${readonly ? " slotReadonly" : ""}`}
+      style={{
+        left: `${xPct}%`,
+        top: `${yPct}%`,
+        width: `${wPct}%`,
+        height: `${hPct}%`,
+      }}
+    >
+      {filled ? <img alt="" src={src!} /> : null}
+      {!filled && !hideEmptyUi ? <span className="edition-slot-placeholder" /> : null}
+    </div>
+  );
+}
+
 export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function PhotoFrame(
   { theme, photos, slotReadonly = false, staticForCapture = false, previewMode = false },
   ref
 ) {
   const isBasic = theme === "basicBlack" || theme === "basicWhite";
+  const isDailyEdition = theme === "dailyEditionDropout";
   const isIllustrated = !isBasic;
   const t = THEME_CLASS[theme];
   const m = THEME_META[theme];
@@ -218,6 +263,56 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
   const p = [...photos];
   while (p.length < 4) p.push(null);
   const [p0, p1, p2, p3] = p.slice(0, 4);
+
+  if (isDailyEdition) {
+    return (
+      <div
+        ref={ref}
+        className={`card ${t}${staticForCapture ? " captureStatic" : ""}${previewMode ? " previewCard" : ""}`}
+      >
+        <div className="editionCanvas">
+          <img className="editionFrameBg" src={dropoutEditionFrame.src} alt="" />
+          {/* Slot coords are mapped from 1000x3000 to % */}
+          <EditionSlot
+            src={p0}
+            readonly={slotReadonly}
+            hideEmptyUi={previewMode}
+            xPct={3}
+            yPct={1.633}
+            wPct={94}
+            hPct={19.333}
+          />
+          <EditionSlot
+            src={p1}
+            readonly={slotReadonly}
+            hideEmptyUi={previewMode}
+            xPct={3}
+            yPct={21.633}
+            wPct={94}
+            hPct={19.333}
+          />
+          <EditionSlot
+            src={p2}
+            readonly={slotReadonly}
+            hideEmptyUi={previewMode}
+            xPct={3}
+            yPct={41.633}
+            wPct={94}
+            hPct={19.333}
+          />
+          <EditionSlot
+            src={p3}
+            readonly={slotReadonly}
+            hideEmptyUi={previewMode}
+            xPct={3}
+            yPct={61.633}
+            wPct={94}
+            hPct={19.333}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

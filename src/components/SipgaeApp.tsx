@@ -26,9 +26,11 @@ const THEME_OPTIONS: { id: FrameTheme; label: string; hint: string }[] = [
   { id: "red", label: "Red", hint: "다크 레드 · 자퇴각" },
   { id: "basicBlack", label: "Basic Black", hint: "기본 프레임 · 검정" },
   { id: "basicWhite", label: "Basic White", hint: "기본 프레임 · 흰색" },
+  { id: "dailyEditionDropout", label: "Daily Edition", hint: "일상네컷 에디션" },
 ];
 
 const STORY_THEME_IDS: FrameTheme[] = ["green", "yellow", "purple", "red"];
+const DAILY_EDITION_THEME_IDS: FrameTheme[] = ["dailyEditionDropout"];
 
 export function SipgaeApp() {
   const [step, setStep] = useState<Step>("home");
@@ -45,10 +47,15 @@ export function SipgaeApp() {
   const [shotNotice, setShotNotice] = useState<string | null>(null);
   const [storyIndex, setStoryIndex] = useState(0);
   const [basicIndex, setBasicIndex] = useState(0);
+  const [dailyEditionIndex, setDailyEditionIndex] = useState(0);
 
   const storyThemeOptions = THEME_OPTIONS.filter((opt) => STORY_THEME_IDS.includes(opt.id));
-  const basicThemeOptions = THEME_OPTIONS.filter((opt) => !STORY_THEME_IDS.includes(opt.id));
+  const dailyEditionThemeOptions = THEME_OPTIONS.filter((opt) => DAILY_EDITION_THEME_IDS.includes(opt.id));
+  const basicThemeOptions = THEME_OPTIONS.filter(
+    (opt) => !STORY_THEME_IDS.includes(opt.id) && !DAILY_EDITION_THEME_IDS.includes(opt.id)
+  );
   const currentStoryTheme = storyThemeOptions[storyIndex % storyThemeOptions.length];
+  const currentDailyEditionTheme = dailyEditionThemeOptions[dailyEditionIndex % dailyEditionThemeOptions.length];
   const currentBasicTheme = basicThemeOptions[basicIndex % basicThemeOptions.length];
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -537,14 +544,14 @@ export function SipgaeApp() {
             }}
           >
             <img
-              src="/home-dog-icon-transparent.png"
+              src="/최종로고.png"
               alt="일상네컷 강아지 아이콘"
               style={{
-                width: 188,
-                height: 188,
+                width: 250,
+                height: 250,
                 objectFit: "contain",
                 filter: "drop-shadow(0 6px 16px rgba(90, 60, 120, 0.15))",
-                marginBottom: -16,
+                marginBottom: -36,
               }}
             />
             <h1
@@ -566,7 +573,7 @@ export function SipgaeApp() {
                 fontWeight: 800,
               }}
             >
-              당신의 소중한 일상을 담고 싶개
+              일상을 소중하개
             </p>
             <p style={{ fontSize: "0.93rem", color: "#756687", opacity: 0.95, lineHeight: 1.6 }}>
               여러분의 일상을 네컷으로 담아보세요
@@ -616,7 +623,7 @@ export function SipgaeApp() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                 gap: 14,
                 alignItems: "start",
               }}
@@ -685,6 +692,79 @@ export function SipgaeApp() {
                     fontSize: "1.1rem",
                   }}
                   aria-label="다음 프레임"
+                >
+                  ›
+                </button>
+              </div>
+              </div>
+              <div>
+                <p style={{ fontSize: "0.82rem", color: "#6d5b88", marginBottom: 10 }}>일상네컷 에디션</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDailyEditionIndex(
+                      (prev) => (prev - 1 + dailyEditionThemeOptions.length) % dailyEditionThemeOptions.length
+                    )
+                  }
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    border: "1px solid rgba(90,60,140,0.28)",
+                    background: "rgba(255,255,255,0.72)",
+                    cursor: "pointer",
+                    fontSize: "1.1rem",
+                  }}
+                  aria-label="이전 일상네컷 에디션 프레임"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTheme(currentDailyEditionTheme.id)}
+                  style={{
+                    padding: "10px 8px 6px",
+                    borderRadius: 14,
+                    border:
+                      selectedTheme === currentDailyEditionTheme.id
+                        ? "2px solid #6f56b5"
+                        : "2px solid transparent",
+                    background:
+                      selectedTheme === currentDailyEditionTheme.id
+                        ? "rgba(255,255,255,0.9)"
+                        : "rgba(255,255,255,0.58)",
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                    textAlign: "center",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 2,
+                    width: 236,
+                  }}
+                >
+                  <div style={{ width: 260, height: SELECT_PREVIEW_HEIGHT, display: "flex", justifyContent: "center", overflow: "hidden" }}>
+                    <div style={{ transform: `scale(${SELECT_PREVIEW_SCALE})`, transformOrigin: "top center" }}>
+                      <PhotoFrame theme={currentDailyEditionTheme.id} photos={EMPTY} slotReadonly previewMode />
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDailyEditionIndex((prev) => (prev + 1) % dailyEditionThemeOptions.length)
+                  }
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    border: "1px solid rgba(90,60,140,0.28)",
+                    background: "rgba(255,255,255,0.72)",
+                    cursor: "pointer",
+                    fontSize: "1.1rem",
+                  }}
+                  aria-label="다음 일상네컷 에디션 프레임"
                 >
                   ›
                 </button>
