@@ -89,8 +89,8 @@ vec3 lut(vec3 c){
   return texture(u_lut,clamp(c,0.,1.)*(N-1.)/N+.5/N).rgb;
 }
 void main(){
-  // mirror X for front-facing camera; Y unchanged
-  vec3 col=texture(u_video,vec2(1.-v_uv.x,v_uv.y)).rgb;
+  // mirror X + flip Y (WebGL UV origin is bottom-left, video data is top-first)
+  vec3 col=texture(u_video,vec2(1.-v_uv.x,1.-v_uv.y)).rgb;
   o=vec4(lut(col),1.);
 }`;
 
