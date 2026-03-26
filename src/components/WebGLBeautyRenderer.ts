@@ -13,12 +13,12 @@
 const LUT_N = 32; // 32³ colour grid
 
 /**
- * Photoism "Natural High-Key" LUT
- * 포토이즘 특유의 밝고 맑은 뉴트럴-쿨 톤
- * • Shadow lift  +2 %  → 순수 검정 없음
- * • Brightness   +5 %  균일 밝기
- * • 채널 균형: R/G/B 거의 동일 — 피부가 오렌지로 안 뜸
- * • 하이라이트에 살짝 쿨: 맑고 깨끗한 느낌
+ * Photoism "Icy Cool-Tone" LUT
+ * 포토이즘 아이시 쿨톤 — 붉은기·노란기 제거, 하이라이트 집중 블루
+ * • R  +1.5 %  (피부 붉은기·황색기 최소화)
+ * • G  +5.0 %  (전체 밝기·화사함 유지)
+ * • B  +4→9 %  (섀도 +4%, 하이라이트 +9% — 쿨톤 집중)
+ * • Shadow lift +1.5 %
  * • 5 % 탈채도
  */
 function buildPhotoismLUT(): Uint8Array {
@@ -28,15 +28,17 @@ function buildPhotoismLUT(): Uint8Array {
   const sc = (x: number) =>
     x + Math.sin(x * Math.PI) * (x < 0.5 ? 0.04 : -0.04);
 
-  /** 균형잡힌 채널 커브 — 오렌지 캐스트 없음 */
-  const R = (x: number) => sc(Math.min(1, x * 1.04 + 4 * x * (1 - x) * 0.005));
+  // R: +1.5% — 붉은기 최소화
+  const R = (x: number) => sc(Math.min(1, x * 1.015));
+  // G: +5% — 밝기 유지
   const G = (x: number) => sc(Math.min(1, x * 1.05));
-  const B = (x: number) => sc(Math.min(1, x * 1.05 + x * x * 0.025)); // 하이라이트만 살짝 쿨
+  // B: 섀도 +4%, 하이라이트 +9% (x² 커브로 하이라이트 집중)
+  const B = (x: number) => sc(Math.min(1, x * 1.04 + x * x * 0.05));
 
   for (let b = 0; b < LUT_N; b++) {
     for (let g = 0; g < LUT_N; g++) {
       for (let r = 0; r < LUT_N; r++) {
-        const lift = 0.02;
+        const lift = 0.015;
         let ri = (r / (LUT_N - 1)) * (1 - lift) + lift;
         let gi = (g / (LUT_N - 1)) * (1 - lift) + lift;
         let bi = (b / (LUT_N - 1)) * (1 - lift) + lift;
@@ -45,7 +47,7 @@ function buildPhotoismLUT(): Uint8Array {
         gi = G(gi);
         bi = B(bi);
 
-        // 5 % 탈채도 → 피부 자연스럽게
+        // 5 % 탈채도 → 피부 맑게
         const lum = ri * 0.299 + gi * 0.587 + bi * 0.114;
         const ds = 0.05;
         ri = ri * (1 - ds) + lum * ds;
@@ -91,7 +93,20 @@ vec3 lut(vec3 c){
 void main(){
   // mirror X + flip Y (WebGL UV origin is bottom-left, video data is top-first)
   vec3 col=texture(u_video,vec2(1.-v_uv.x,1.-v_uv.y)).rgb;
-  o=vec4(lut(col),1.);
+
+  // 3D LUT colour grade
+  col=lut(col);
+
+  // ── Highkey filter: brightness(1.28) contrast(1.06) saturate(1.15) ──────
+  // 1. Contrast
+  col=(col-0.5)*1.06+0.5;
+  // 2. Brightness
+  col*=1.28;
+  // 3. Saturation (luminance method) — 입술·생기 보존
+  float luma=dot(col,vec3(0.299,0.587,0.114));
+  col=mix(vec3(luma),col,1.15);
+
+  o=vec4(clamp(col,0.,1.),1.);
 }`;
 
 /**
@@ -138,8 +153,15 @@ void main(){
   vec3 sharp=texture(u_sharp,v_uv).rgb;
   vec3 soft =texture(u_soft, v_uv).rgb;
   float m=mask(v_uv);
-  // inside face: blend 40 % toward blur (subtle skin-softening)
-  o=vec4(mix(sharp,mix(sharp,soft,.40),m),1.);
+  // inside face: 40% skin softening blend
+  vec3 result=mix(sharp,mix(sharp,soft,.40),m);
+
+  // ── Alice Blue overlay (#f0f8ff, α=0.13) — 아이시 쿨톤 피니시 ──────────
+  // screen blend: result + alice*α*(1-result) — 섀도 너무 파래지지 않음
+  const vec3 ALICE=vec3(0.941,0.973,1.0);
+  result=result+ALICE*0.13*(1.0-result);
+
+  o=vec4(clamp(result,0.,1.),1.);
 }`;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
