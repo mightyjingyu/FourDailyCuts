@@ -89,7 +89,7 @@ void main(){
     texture(u_video,uv+vec2( 0., px.y)).rgb+
     texture(u_video,uv+vec2( 0.,-px.y)).rgb
   )*0.25;
-  col=clamp(col+(col-nbr)*2.5,0.,1.);
+  col=clamp(col+(col-nbr)*3.0,0.,1.);
 
   // ── Tone Curve: contrast(1.12) → brightness(1.15) ────────────────────────
   col=(col-0.5)*1.12+0.5;   // contrast — 쨍함, 블랙 유지
