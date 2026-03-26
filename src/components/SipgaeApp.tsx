@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FloatingBackground } from "./FloatingBackground";
 import { BASIC_FRAME_SLOT_ASPECT, PhotoFrame, type FrameTheme } from "./PhotoFrame";
+import { WebGLBeautyRenderer } from "./WebGLBeautyRenderer";
 
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-// Y2K 디지털 카메라 필터: 선명한 채도 + 쿨 블루 색조 + 밝고 또렷한 느낌
-const CAMERA_FILTER = "brightness(1.18) contrast(1.15) saturate(1.45) hue-rotate(-8deg)";
-const LERP_S        = 0.12;
+// Face Mesh landmark lerp smoothing factor
+const LERP_S = 0.12;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
@@ -60,7 +60,7 @@ export function SipgaeApp() {
   const frameRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const renderRafRef = useRef<number | null>(null);
-  const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rendererRef  = useRef<WebGLBeautyRenderer | null>(null);
   // MediaPipe Face Mesh — 468+10 iris 랜드마크
   const faceMeshRef       = useRef<unknown>(null);
   const faceMeshReadyRef  = useRef(false);
@@ -121,10 +121,8 @@ export function SipgaeApp() {
     const ctx = c.getContext("2d");
     if (!ctx) return null;
     const { sx, sy, sw, sh } = getCenterCropRect(w, h, aspect);
-    // Preview is mirrored; capture must preserve the same mirror orientation.
-    // Filter is applied at draw time so saved frame keeps the same look.
+    // Fallback: mirror only (WebGL LUT not available at this point)
     ctx.save();
-    ctx.filter = CAMERA_FILTER;
     ctx.translate(c.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
@@ -134,62 +132,9 @@ export function SipgaeApp() {
 
   const drawBeautyWarpFrame = useCallback(() => {
     const video = videoRef.current;
-    const preview = previewCanvasRef.current;
-    if (!video || !preview || video.readyState < 2) return;
+    if (!video || video.readyState < 2) return;
 
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    if (!vw || !vh) return;
-
-    if (preview.width !== vw || preview.height !== vh) {
-      preview.width = vw;
-      preview.height = vh;
-    }
-
-    let work = workCanvasRef.current;
-    if (!work) {
-      work = document.createElement("canvas");
-      workCanvasRef.current = work;
-    }
-    if (work.width !== vw || work.height !== vh) {
-      work.width = vw;
-      work.height = vh;
-    }
-
-    const wctx = work.getContext("2d");
-    const ctx = preview.getContext("2d");
-    if (!ctx || !wctx) return;
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    wctx.imageSmoothingEnabled = true;
-    wctx.imageSmoothingQuality = "high";
-
-    // ── Pass 1: 좌우 반전 + Y2K 필터 → preview ──────────────────────────
-    ctx.save();
-    ctx.clearRect(0, 0, vw, vh);
-    ctx.filter = CAMERA_FILTER;
-    ctx.translate(vw, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, vw, vh);
-    ctx.restore();
-
-    // ── Pass 2: 블랙 리프트 (lighten — Y2K 디지캠 특유의 뜬 어두운 영역)
-    ctx.save();
-    ctx.globalCompositeOperation = "lighten";
-    ctx.fillStyle = "#0d0d1a";   // 매우 어두운 남색 → 블랙이 완전 검정 안 됨
-    ctx.fillRect(0, 0, vw, vh);
-    ctx.restore();
-
-    // ── Pass 3: 쿨 블루 하이라이트 (screen — Y2K CCD 색수차 느낌) ────────
-    ctx.save();
-    ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = 0.055;
-    ctx.fillStyle = "#3355ff";
-    ctx.fillRect(0, 0, vw, vh);
-    ctx.restore();
-
-    // ── Face Mesh 비동기 갱신 (80 ms 쓰로틀) — 피부 소프트닝 전용 ────────
+    // ── Face Mesh 비동기 갱신 (80 ms 쓰로틀) ─────────────────────────────
     const now = Date.now();
     if (
       faceMeshReadyRef.current &&
@@ -204,30 +149,8 @@ export function SipgaeApp() {
       });
     }
 
-    // ── Pass 4: 피부 소프트닝 (랜드마크 있을 때만, 아주 은은하게) ─────────
-    const lms = landmarksRef.current;
-    if (!lms || lms.length < 468) return;
-
-    const lx = (i: number) => (1 - lms[i].x) * vw;
-    const ly = (i: number) => lms[i].y * vh;
-
-    // work ← 현재 preview 스냅샷 (소프트닝용)
-    wctx.clearRect(0, 0, vw, vh);
-    wctx.drawImage(preview, 0, 0);
-
-    const OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-    try {
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(lx(OVAL[0]), ly(OVAL[0]));
-      for (let i = 1; i < OVAL.length; i++) ctx.lineTo(lx(OVAL[i]), ly(OVAL[i]));
-      ctx.closePath();
-      ctx.clip();
-      ctx.filter = "blur(0.3px)";
-      ctx.globalAlpha = 0.30;   // 아주 약하게 — Y2K는 선명함이 특징
-      ctx.drawImage(work, 0, 0);
-      ctx.restore();
-    } catch { /* ctx.filter 미지원 */ }
+    // ── WebGL 렌더 (LUT + 피부 소프트닝, 전부 GPU) ────────────────────────
+    rendererRef.current?.render(video, landmarksRef.current);
   }, []);
 
   useEffect(() => {
@@ -279,6 +202,24 @@ export function SipgaeApp() {
       }
     };
   }, [step, drawBeautyWarpFrame]);
+
+  // ── WebGL 렌더러 초기화 ────────────────────────────────────────────────
+  useEffect(() => {
+    if (step !== "shoot") return;
+    const canvas = previewCanvasRef.current;
+    if (!canvas) return;
+    let renderer: WebGLBeautyRenderer;
+    try {
+      renderer = new WebGLBeautyRenderer(canvas);
+      rendererRef.current = renderer;
+    } catch (e) {
+      console.warn("[WebGL] init failed, beauty filter disabled:", e);
+    }
+    return () => {
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
+    };
+  }, [step]);
 
   // ── MediaPipe Face Mesh 초기화 ─────────────────────────────────────────
   useEffect(() => {
