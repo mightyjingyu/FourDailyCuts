@@ -102,7 +102,7 @@ void main(){
   // ── 색선명도 Vibrance +0.30 (낮은 채도 영역 집중 부스트) ─────────────
   // 이미 채도 높은 색은 건드리지 않고, 낮은 채도 색만 살려줌
   float sat=max(col.r,max(col.g,col.b))-min(col.r,min(col.g,col.b));
-  col=mix(vec3(luma),col,1.0+(1.0-sat)*0.30);
+  col=mix(vec3(luma),col,1.0+(1.0-sat)*0.60);
 
   o=vec4(clamp(col,0.,1.),1.);
 }`;
