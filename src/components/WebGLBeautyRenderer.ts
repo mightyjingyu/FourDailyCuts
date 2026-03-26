@@ -3,10 +3,10 @@
  * GPU-only beauty pipeline (WebGL2)
  *
  * Pipeline:
- *   Pass 1 – video → fboSharp   : mirror-flip + 3-D LUT colour grade
- *   Pass 2H – fboSharp → fboH   : 7-tap Gaussian (horizontal, r=2px)
- *   Pass 2V – fboH     → fboV   : 7-tap Gaussian (vertical,   r=2px)
- *   Pass 3  – fboSharp + fboV → canvas : face-oval alpha-mask blend
+ *   Pass 1  – video → fboSharp : mirror + unsharp-mask + contrast + brightness
+ *   Pass 2H – fboSharp → fboH  : 7-tap Gaussian (horizontal, r=8px) → bloom blur
+ *   Pass 2V – fboH     → fboV  : 7-tap Gaussian (vertical,   r=8px) → bloom blur
+ *   Pass 3  – fboSharp + fboV → canvas : bloom(screen) + vignette + face-oval softening
  */
 
 // ─── 3-D LUT ─────────────────────────────────────────────────────────────────
@@ -36,21 +36,10 @@ function buildPhotoismLUT(): Uint8Array {
   for (let b = 0; b < LUT_N; b++) {
     for (let g = 0; g < LUT_N; g++) {
       for (let r = 0; r < LUT_N; r++) {
-        const lift = 0.015;
-        let ri = (r / (LUT_N - 1)) * (1 - lift) + lift;
-        let gi = (g / (LUT_N - 1)) * (1 - lift) + lift;
-        let bi = (b / (LUT_N - 1)) * (1 - lift) + lift;
-
-        ri = R(ri);
-        gi = G(gi);
-        bi = B(bi);
-
-        // 5 % 탈채도 → 피부 맑게
-        const lum = ri * 0.299 + gi * 0.587 + bi * 0.114;
-        const ds = 0.05;
-        ri = ri * (1 - ds) + lum * ds;
-        gi = gi * (1 - ds) + lum * ds;
-        bi = bi * (1 - ds) + lum * ds;
+        // Shadow lift 0 → 순수 블랙 유지 (눈동자·머리카락 디테일 살림)
+        const ri = R(r / (LUT_N - 1));
+        const gi = G(g / (LUT_N - 1));
+        const bi = B(b / (LUT_N - 1));
 
         const idx = (b * LUT_N * LUT_N + g * LUT_N + r) * 4;
         data[idx + 0] = Math.round(Math.min(1, Math.max(0, ri)) * 255);
@@ -89,22 +78,22 @@ vec3 lut(vec3 c){
   return texture(u_lut,clamp(c,0.,1.)*(N-1.)/N+.5/N).rgb;
 }
 void main(){
-  // mirror X + flip Y (WebGL UV origin is bottom-left, video data is top-first)
   vec2 uv=vec2(1.-v_uv.x,1.-v_uv.y);
   vec3 col=texture(u_video,uv).rgb;
 
-  // 선명도 — unsharp mask (인접 4픽셀 평균과의 차이를 더함)
+  // ── Unsharp Mask (5-tap cross, strength 2.5) ─────────────────────────────
   vec2 px=1.0/vec2(textureSize(u_video,0));
-  vec3 blur=(
-    texture(u_video,uv+vec2( px.x,0.)).rgb+
-    texture(u_video,uv+vec2(-px.x,0.)).rgb+
-    texture(u_video,uv+vec2(0., px.y)).rgb+
-    texture(u_video,uv+vec2(0.,-px.y)).rgb
+  vec3 nbr=(
+    texture(u_video,uv+vec2( px.x, 0.)).rgb+
+    texture(u_video,uv+vec2(-px.x, 0.)).rgb+
+    texture(u_video,uv+vec2( 0., px.y)).rgb+
+    texture(u_video,uv+vec2( 0.,-px.y)).rgb
   )*0.25;
-  col=clamp(col+(col-blur)*3.0,0.,1.);  // strength 3.0
+  col=clamp(col+(col-nbr)*2.5,0.,1.);
 
-  // 밝기 +15%
-  col*=1.15;
+  // ── Tone Curve: contrast(1.12) → brightness(1.15) ────────────────────────
+  col=(col-0.5)*1.12+0.5;   // contrast — 쨍함, 블랙 유지
+  col*=1.15;                 // brightness
 
   o=vec4(clamp(col,0.,1.),1.);
 }`;
@@ -138,23 +127,41 @@ void main(){
 const FRAG_COMP = /* glsl */ `#version 300 es
 precision mediump float;
 uniform sampler2D u_sharp;
-uniform sampler2D u_soft;
+uniform sampler2D u_soft;   // wide-blur (r=8px) — bloom source
 uniform bool  u_hasFace;
-uniform vec2  u_fc;    // face centre  (display UV)
-uniform vec2  u_fr;    // face radii   (display UV)
+uniform vec2  u_fc;
+uniform vec2  u_fr;
 in  vec2 v_uv;
 out vec4 o;
-float mask(vec2 uv){
+
+float faceMask(vec2 uv){
   if(!u_hasFace)return 0.;
   vec2 d=(uv-u_fc)/u_fr;
-  return smoothstep(1.35,.60,length(d));
+  return smoothstep(1.35,.65,length(d));
 }
+
 void main(){
-  vec3 sharp=texture(u_sharp,v_uv).rgb;
-  vec3 soft =texture(u_soft, v_uv).rgb;
-  float m=mask(v_uv);
-  // inside face: 40% skin softening blend
-  vec3 result=mix(sharp,mix(sharp,soft,.40),m);
+  vec3 sharp  =texture(u_sharp,v_uv).rgb;
+  vec3 blurred=texture(u_soft, v_uv).rgb;
+
+  // ── Bloom (하이라이트 영역만 추출 → screen blend) ─────────────────────
+  // 루마 기준 0.60 이상인 밝은 영역만 블룸 대상
+  float luma=dot(blurred,vec3(0.299,0.587,0.114));
+  const float THRESH=0.60;
+  float hi=smoothstep(THRESH,1.0,luma);          // 부드러운 하이라이트 마스크
+  vec3  bloom=blurred*hi*0.45;                   // 블룸 강도 0.45
+  // Screen blend: 1-(1-a)(1-b)
+  vec3 result=1.-(1.-sharp)*(1.-bloom);
+
+  // ── Face skin softening (25%, 뽀샤시 미세하게) ───────────────────────
+  float m=faceMask(v_uv);
+  result=mix(result,mix(result,blurred,0.25),m);
+
+  // ── Vignette (가장자리 최대 18% 어둡게 → 시선 집중) ─────────────────
+  vec2  cv   =v_uv-0.5;
+  float vdist=dot(cv,cv);                        // 0 at centre, 0.5 at corner
+  float vig  =1.-smoothstep(0.18,0.50,vdist)*0.18;
+  result*=vig;
 
   o=vec4(clamp(result,0.,1.),1.);
 }`;
@@ -379,14 +386,14 @@ export class WebGLBeautyRenderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fboSharp.tex);
     gl.uniform1i(this.uBlur.u_tex, 0);
-    gl.uniform2f(this.uBlur.u_dir, 2 / w, 0);        // horizontal step = 2px
+    gl.uniform2f(this.uBlur.u_dir, 8 / w, 0);        // horizontal step = 8px (bloom)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // ── Pass 2V: fboBlurH → fboBlurV  (Gaussian vertical, r=2px) ─────────
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboBlurV.fb);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fboBlurH.tex);
-    gl.uniform2f(this.uBlur.u_dir, 0, 2 / h);        // vertical step = 2px
+    gl.uniform2f(this.uBlur.u_dir, 0, 8 / h);        // vertical step = 8px (bloom)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // ── Pass 3: fboSharp + fboBlurV → canvas  (composite + face mask) ─────
