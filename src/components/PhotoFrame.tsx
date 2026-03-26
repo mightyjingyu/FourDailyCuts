@@ -2,6 +2,7 @@
 
 import { forwardRef } from "react";
 import dropoutEditionFrame from "../../자퇴할개프레임.png";
+import homeGoEditionFrame from "../../집에갈개프레임.png";
 
 export type FrameTheme =
   | "green"
@@ -10,7 +11,8 @@ export type FrameTheme =
   | "red"
   | "basicBlack"
   | "basicWhite"
-  | "dailyEditionDropout";
+  | "dailyEditionDropout"
+  | "dailyEditionHomeGo";
 
 const THEME_CLASS: Record<FrameTheme, string> = {
   green: "t1",
@@ -20,6 +22,7 @@ const THEME_CLASS: Record<FrameTheme, string> = {
   basicBlack: "t5",
   basicWhite: "t6",
   dailyEditionDropout: "t8",
+  dailyEditionHomeGo: "t8",
 };
 
 type PhotoFrameProps = {
@@ -191,6 +194,13 @@ const THEME_META: Record<
     slotIco: "📷",
     divIcos: ["•", "•", "•"],
   },
+  dailyEditionHomeGo: {
+    tag: "일상네컷 에디션",
+    ftMain: "일상네컷 에디션",
+    ftSub: "DAILY EDITION",
+    slotIco: "📷",
+    divIcos: ["•", "•", "•"],
+  },
 };
 
 function SlotCell({
@@ -255,7 +265,7 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
   ref
 ) {
   const isBasic = theme === "basicBlack" || theme === "basicWhite";
-  const isDailyEdition = theme === "dailyEditionDropout";
+  const isDailyEdition = theme === "dailyEditionDropout" || theme === "dailyEditionHomeGo";
   const isIllustrated = !isBasic;
   const t = THEME_CLASS[theme];
   const m = THEME_META[theme];
@@ -265,13 +275,15 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
   const [p0, p1, p2, p3] = p.slice(0, 4);
 
   if (isDailyEdition) {
+    const editionBgSrc =
+      theme === "dailyEditionDropout" ? dropoutEditionFrame.src : homeGoEditionFrame.src;
     return (
       <div
         ref={ref}
         className={`card ${t}${staticForCapture ? " captureStatic" : ""}${previewMode ? " previewCard" : ""}`}
       >
         <div className="editionCanvas">
-          <img className="editionFrameBg" src={dropoutEditionFrame.src} alt="" />
+          <img className="editionFrameBg" src={editionBgSrc} alt="" />
           {/* Slot coords are mapped from 1000x3000 to % */}
           <EditionSlot
             src={p0}

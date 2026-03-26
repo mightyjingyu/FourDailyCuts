@@ -27,10 +27,11 @@ const THEME_OPTIONS: { id: FrameTheme; label: string; hint: string }[] = [
   { id: "basicBlack", label: "Basic Black", hint: "기본 프레임 · 검정" },
   { id: "basicWhite", label: "Basic White", hint: "기본 프레임 · 흰색" },
   { id: "dailyEditionDropout", label: "Daily Edition", hint: "일상네컷 에디션" },
+  { id: "dailyEditionHomeGo", label: "Daily Edition", hint: "일상네컷 에디션" },
 ];
 
-const STORY_THEME_IDS: FrameTheme[] = ["green", "yellow", "purple", "red"];
-const DAILY_EDITION_THEME_IDS: FrameTheme[] = ["dailyEditionDropout"];
+const BASIC_THEME_IDS: FrameTheme[] = ["basicBlack", "basicWhite"];
+const DAILY_EDITION_THEME_IDS: FrameTheme[] = ["dailyEditionDropout", "dailyEditionHomeGo"];
 
 export function SipgaeApp() {
   const [step, setStep] = useState<Step>("home");
@@ -45,16 +46,13 @@ export function SipgaeApp() {
   const [tick, setTick] = useState(7);
   const [shotFxOn, setShotFxOn] = useState(false);
   const [shotNotice, setShotNotice] = useState<string | null>(null);
-  const [storyIndex, setStoryIndex] = useState(0);
   const [basicIndex, setBasicIndex] = useState(0);
   const [dailyEditionIndex, setDailyEditionIndex] = useState(0);
 
-  const storyThemeOptions = THEME_OPTIONS.filter((opt) => STORY_THEME_IDS.includes(opt.id));
   const dailyEditionThemeOptions = THEME_OPTIONS.filter((opt) => DAILY_EDITION_THEME_IDS.includes(opt.id));
   const basicThemeOptions = THEME_OPTIONS.filter(
-    (opt) => !STORY_THEME_IDS.includes(opt.id) && !DAILY_EDITION_THEME_IDS.includes(opt.id)
+    (opt) => BASIC_THEME_IDS.includes(opt.id)
   );
-  const currentStoryTheme = storyThemeOptions[storyIndex % storyThemeOptions.length];
   const currentDailyEditionTheme = dailyEditionThemeOptions[dailyEditionIndex % dailyEditionThemeOptions.length];
   const currentBasicTheme = basicThemeOptions[basicIndex % basicThemeOptions.length];
 
@@ -623,82 +621,13 @@ export function SipgaeApp() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                 gap: 14,
                 alignItems: "start",
               }}
             >
               <div>
-                <p style={{ fontSize: "0.82rem", color: "#6d5b88", marginBottom: 10 }}>싶개 프레임</p>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setStoryIndex((prev) => (prev - 1 + storyThemeOptions.length) % storyThemeOptions.length)
-                  }
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "50%",
-                    border: "1px solid rgba(90,60,140,0.28)",
-                    background: "rgba(255,255,255,0.72)",
-                    cursor: "pointer",
-                    fontSize: "1.1rem",
-                  }}
-                  aria-label="이전 프레임"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedTheme(currentStoryTheme.id)}
-                  style={{
-                    padding: "10px 8px 6px",
-                    borderRadius: 14,
-                    border:
-                      selectedTheme === currentStoryTheme.id
-                        ? "2px solid #6f56b5"
-                        : "2px solid transparent",
-                    background:
-                      selectedTheme === currentStoryTheme.id
-                        ? "rgba(255,255,255,0.9)"
-                        : "rgba(255,255,255,0.58)",
-                    fontFamily: "inherit",
-                    cursor: "pointer",
-                    textAlign: "center",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 2,
-                    width: 236,
-                  }}
-                >
-                  <div style={{ width: 260, height: SELECT_PREVIEW_HEIGHT, display: "flex", justifyContent: "center", overflow: "hidden" }}>
-                    <div style={{ transform: `scale(${SELECT_PREVIEW_SCALE})`, transformOrigin: "top center" }}>
-                      <PhotoFrame theme={currentStoryTheme.id} photos={EMPTY} slotReadonly previewMode />
-                    </div>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStoryIndex((prev) => (prev + 1) % storyThemeOptions.length)}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "50%",
-                    border: "1px solid rgba(90,60,140,0.28)",
-                    background: "rgba(255,255,255,0.72)",
-                    cursor: "pointer",
-                    fontSize: "1.1rem",
-                  }}
-                  aria-label="다음 프레임"
-                >
-                  ›
-                </button>
-              </div>
-              </div>
-              <div>
-                <p style={{ fontSize: "0.82rem", color: "#6d5b88", marginBottom: 10 }}>일상네컷 에디션</p>
+                <p style={{ fontSize: "0.82rem", color: "#6d5b88", marginBottom: 10 }}>멍개 프레임</p>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 <button
                   type="button"
@@ -716,7 +645,7 @@ export function SipgaeApp() {
                     cursor: "pointer",
                     fontSize: "1.1rem",
                   }}
-                  aria-label="이전 일상네컷 에디션 프레임"
+                  aria-label="이전 멍개 프레임"
                 >
                   ‹
                 </button>
@@ -764,7 +693,7 @@ export function SipgaeApp() {
                     cursor: "pointer",
                     fontSize: "1.1rem",
                   }}
-                  aria-label="다음 일상네컷 에디션 프레임"
+                  aria-label="다음 멍개 프레임"
                 >
                   ›
                 </button>
