@@ -1,8 +1,44 @@
 "use client";
 
 import { forwardRef } from "react";
+import basicBlackFrame from "../../블랙프레임.png";
+import basicWhiteFrame from "../../화이트프레임.png";
 import dropoutEditionFrame from "../../자퇴할개프레임.png";
 import homeGoEditionFrame from "../../집에갈개프레임.png";
+
+/** 1000×3000 설계 기준 → % (멍개·기본 프레임은 사진칸 좌표가 다름) */
+const FRAME_REF = { w: 1000, h: 3000 } as const;
+
+/** 멍개 프레임(자퇴할개·집에갈개) 슬롯 — 기존 자퇴할개 좌표 */
+const MUNGG_SLOTS_PX = [
+  { x: 30, y: 49, w: 940, h: 580 },
+  { x: 30, y: 649, w: 940, h: 580 },
+  { x: 30, y: 1249, w: 940, h: 580 },
+  { x: 30, y: 1849, w: 940, h: 580 },
+] as const;
+
+/** 기본 프레임(블랙·화이트) — 피그마 1000×3000 기준 사진칸(각 879×567, x=60) */
+export const BASIC_FRAME_SLOT_PX = { w: 879, h: 567 } as const;
+export const BASIC_FRAME_SLOT_ASPECT = BASIC_FRAME_SLOT_PX.w / BASIC_FRAME_SLOT_PX.h;
+
+const BASIC_SLOTS_PX = [
+  { x: 60, y: 231, w: 879, h: 567 },
+  { x: 60, y: 842, w: 879, h: 567 },
+  { x: 60, y: 1454, w: 879, h: 567 },
+  { x: 60, y: 2065, w: 879, h: 567 },
+] as const;
+
+function slotsPxToPct(slots: readonly { x: number; y: number; w: number; h: number }[]) {
+  return slots.map((s) => ({
+    xPct: (s.x / FRAME_REF.w) * 100,
+    yPct: (s.y / FRAME_REF.h) * 100,
+    wPct: (s.w / FRAME_REF.w) * 100,
+    hPct: (s.h / FRAME_REF.h) * 100,
+  }));
+}
+
+const MUNGG_SLOT_PCT = slotsPxToPct(MUNGG_SLOTS_PX);
+const BASIC_SLOT_PCT = slotsPxToPct(BASIC_SLOTS_PX);
 
 export type FrameTheme =
   | "green"
@@ -19,8 +55,8 @@ const THEME_CLASS: Record<FrameTheme, string> = {
   yellow: "t2",
   purple: "t3",
   red: "t4",
-  basicBlack: "t5",
-  basicWhite: "t6",
+  basicBlack: "t8",
+  basicWhite: "t8",
   dailyEditionDropout: "t8",
   dailyEditionHomeGo: "t8",
 };
@@ -84,10 +120,6 @@ function PurpleCharacter() {
 
 function RedCharacter() {
   return <DogCharacter src="/sipgae-dog-red.png" width={138} height={98} />;
-}
-
-function EmptyCharacter() {
-  return <div style={{ width: 138, height: 98 }} />;
 }
 
 function HandDrawnPawLeft({ className }: { className?: string }) {
@@ -175,14 +207,14 @@ const THEME_META: Record<
   },
   basicBlack: {
     tag: "PHOTO FRAME",
-    ftMain: "기본 프레임 - 검정",
+    ftMain: "기본 프레임",
     ftSub: "BASIC BLACK",
     slotIco: "📷",
     divIcos: ["•", "•", "•"],
   },
   basicWhite: {
     tag: "PHOTO FRAME",
-    ftMain: "기본 프레임 - 흰색",
+    ftMain: "기본 프레임",
     ftSub: "BASIC WHITE",
     slotIco: "📷",
     divIcos: ["•", "•", "•"],
@@ -264,9 +296,12 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
   { theme, photos, slotReadonly = false, staticForCapture = false, previewMode = false },
   ref
 ) {
-  const isBasic = theme === "basicBlack" || theme === "basicWhite";
-  const isDailyEdition = theme === "dailyEditionDropout" || theme === "dailyEditionHomeGo";
-  const isIllustrated = !isBasic;
+  const isEditionImage =
+    theme === "basicBlack" ||
+    theme === "basicWhite" ||
+    theme === "dailyEditionDropout" ||
+    theme === "dailyEditionHomeGo";
+  const isIllustrated = !isEditionImage;
   const t = THEME_CLASS[theme];
   const m = THEME_META[theme];
   const charSrc = THEME_CHARACTER_SRC[theme];
@@ -274,9 +309,18 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
   while (p.length < 4) p.push(null);
   const [p0, p1, p2, p3] = p.slice(0, 4);
 
-  if (isDailyEdition) {
+  if (isEditionImage) {
     const editionBgSrc =
-      theme === "dailyEditionDropout" ? dropoutEditionFrame.src : homeGoEditionFrame.src;
+      theme === "basicBlack"
+        ? basicBlackFrame.src
+        : theme === "basicWhite"
+          ? basicWhiteFrame.src
+          : theme === "dailyEditionDropout"
+            ? dropoutEditionFrame.src
+            : homeGoEditionFrame.src;
+    const slotPct =
+      theme === "basicBlack" || theme === "basicWhite" ? BASIC_SLOT_PCT : MUNGG_SLOT_PCT;
+    const slotPhotos = [p0, p1, p2, p3];
     return (
       <div
         ref={ref}
@@ -284,43 +328,18 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
       >
         <div className="editionCanvas">
           <img className="editionFrameBg" src={editionBgSrc} alt="" />
-          {/* Slot coords are mapped from 1000x3000 to % */}
-          <EditionSlot
-            src={p0}
-            readonly={slotReadonly}
-            hideEmptyUi={previewMode}
-            xPct={3}
-            yPct={1.633}
-            wPct={94}
-            hPct={19.333}
-          />
-          <EditionSlot
-            src={p1}
-            readonly={slotReadonly}
-            hideEmptyUi={previewMode}
-            xPct={3}
-            yPct={21.633}
-            wPct={94}
-            hPct={19.333}
-          />
-          <EditionSlot
-            src={p2}
-            readonly={slotReadonly}
-            hideEmptyUi={previewMode}
-            xPct={3}
-            yPct={41.633}
-            wPct={94}
-            hPct={19.333}
-          />
-          <EditionSlot
-            src={p3}
-            readonly={slotReadonly}
-            hideEmptyUi={previewMode}
-            xPct={3}
-            yPct={61.633}
-            wPct={94}
-            hPct={19.333}
-          />
+          {slotPct.map((s, i) => (
+            <EditionSlot
+              key={i}
+              src={slotPhotos[i]}
+              readonly={slotReadonly}
+              hideEmptyUi={previewMode}
+              xPct={s.xPct}
+              yPct={s.yPct}
+              wPct={s.wPct}
+              hPct={s.hPct}
+            />
+          ))}
         </div>
       </div>
     );
@@ -329,18 +348,13 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
   return (
     <div
       ref={ref}
-      className={`card ${t}${isIllustrated ? " storyMode" : ""}${isBasic ? " basicMode" : ""}${staticForCapture ? " captureStatic" : ""}${previewMode ? " previewCard" : ""}`}
+      className={`card ${t}${isIllustrated ? " storyMode" : ""}${staticForCapture ? " captureStatic" : ""}${previewMode ? " previewCard" : ""}`}
     >
       <div className="grid">
         <SlotCell src={p0} ico={m.slotIco} lbl="웹캠 촬영" readonly={slotReadonly} hideEmptyUi={previewMode} />
         <SlotCell src={p1} ico={m.slotIco} lbl="웹캠 촬영" readonly={slotReadonly} hideEmptyUi={previewMode} />
         <SlotCell src={p2} ico={m.slotIco} lbl="웹캠 촬영" readonly={slotReadonly} hideEmptyUi={previewMode} />
         <SlotCell src={p3} ico={m.slotIco} lbl="웹캠 촬영" readonly={slotReadonly} hideEmptyUi={previewMode} />
-        {isBasic && (
-          <>
-            <div className="basicBrandTop">일상네컷</div>
-          </>
-        )}
         {isIllustrated && (
           <>
             <div className={`storyBurst storySpeech speech-${theme}`}>{m.tag}</div>
@@ -392,8 +406,6 @@ export const PhotoFrame = forwardRef<HTMLDivElement, PhotoFrameProps>(function P
           {theme === "yellow" && <YellowCharacter />}
           {theme === "purple" && <PurpleCharacter />}
           {theme === "red" && <RedCharacter />}
-          {theme === "basicBlack" && <EmptyCharacter />}
-          {theme === "basicWhite" && <EmptyCharacter />}
         </div>
         <div className="ft">
           <div className="ft-main">{m.ftMain}</div>

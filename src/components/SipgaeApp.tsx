@@ -1,9 +1,8 @@
 "use client";
 
-import html2canvas from "html2canvas";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FloatingBackground } from "./FloatingBackground";
-import { PhotoFrame, type FrameTheme } from "./PhotoFrame";
+import { BASIC_FRAME_SLOT_ASPECT, PhotoFrame, type FrameTheme } from "./PhotoFrame";
 
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
@@ -13,6 +12,7 @@ const CAMERA_FILTER    = "contrast(1.1) brightness(1.1) saturate(1.05) blur(0.3p
 const BEAUTY_SLIM      = 0.97;   // V-line: 3 % 가로 압축 (자연스러운 슬림)
 const BEAUTY_EYE_ZOOM  = 1.05;   // 눈 5 % 확대
 const BEAUTY_EYE_ALPHA = 0.84;
+/** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
 const CAPTURE_WIDTH = Math.round(CAPTURE_HEIGHT * SLOT_ASPECT);
@@ -100,13 +100,18 @@ export function SipgaeApp() {
     const v = videoRef.current;
     if (!c) return null;
 
+    const useBasicSlotAspect = theme === "basicBlack" || theme === "basicWhite";
+    const aspect = useBasicSlotAspect ? BASIC_FRAME_SLOT_ASPECT : SLOT_ASPECT;
+    const capW = useBasicSlotAspect ? Math.round(CAPTURE_HEIGHT * aspect) : CAPTURE_WIDTH;
+    const capH = CAPTURE_HEIGHT;
+
     // Primary source: processed preview canvas (mirror + beauty + reshape).
     if (preview && preview.width > 0 && preview.height > 0) {
-      c.width = CAPTURE_WIDTH;
-      c.height = CAPTURE_HEIGHT;
+      c.width = capW;
+      c.height = capH;
       const ctx = c.getContext("2d");
       if (!ctx) return null;
-      const { sx, sy, sw, sh } = getCenterCropRect(preview.width, preview.height, SLOT_ASPECT);
+      const { sx, sy, sw, sh } = getCenterCropRect(preview.width, preview.height, aspect);
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.drawImage(preview, sx, sy, sw, sh, 0, 0, c.width, c.height);
       return c.toDataURL("image/jpeg", 0.95);
@@ -117,11 +122,11 @@ export function SipgaeApp() {
     const w = v.videoWidth;
     const h = v.videoHeight;
     if (!w || !h) return null;
-    c.width = CAPTURE_WIDTH;
-    c.height = CAPTURE_HEIGHT;
+    c.width = capW;
+    c.height = capH;
     const ctx = c.getContext("2d");
     if (!ctx) return null;
-    const { sx, sy, sw, sh } = getCenterCropRect(w, h, SLOT_ASPECT);
+    const { sx, sy, sw, sh } = getCenterCropRect(w, h, aspect);
     // Preview is mirrored; capture must preserve the same mirror orientation.
     // Filter is applied at draw time so saved frame keeps the same look.
     ctx.save();
@@ -131,7 +136,7 @@ export function SipgaeApp() {
     ctx.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
     ctx.restore();
     return c.toDataURL("image/jpeg", 0.95);
-  }, [getCenterCropRect]);
+  }, [getCenterCropRect, theme]);
 
   const drawBeautyWarpFrame = useCallback(() => {
     const video = videoRef.current;
@@ -468,6 +473,7 @@ export function SipgaeApp() {
     setStaticCapture(true);
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     try {
+      const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(frameRef.current, {
         scale: 2,
         useCORS: true,
@@ -520,7 +526,7 @@ export function SipgaeApp() {
       <div
         style={{
           position: "relative",
-          zIndex: 1,
+          zIndex: 10,
           minHeight: "100vh",
           display: "flex",
           flexDirection: "column",
@@ -580,6 +586,8 @@ export function SipgaeApp() {
               type="button"
               onClick={() => setStep("select")}
               style={{
+                position: "relative",
+                zIndex: 1,
                 marginTop: 12,
                 padding: "14px 32px",
                 fontSize: "1.05rem",
@@ -1041,3 +1049,5 @@ export function SipgaeApp() {
     </>
   );
 }
+
+export default SipgaeApp;
