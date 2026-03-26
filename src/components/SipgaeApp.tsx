@@ -521,7 +521,7 @@ export function SipgaeApp() {
               원하시는 프레임을 선택한 후 촬영하기 버튼을 눌러주세요
             </p>
             <p style={{ fontSize: "0.76rem", color: "#999999", marginBottom: 20 }}>
-              (핸드폰으로 촬영할경우 양옆이 조금씩 잘려서 나오니 중앙에 모여서 찍어주세요)
+              핸드폰으로 촬영할 경우 위아래가 잘려나옵니다
             </p>
             <div className="frame-grid">
               <div>
