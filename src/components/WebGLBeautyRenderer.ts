@@ -92,8 +92,17 @@ void main(){
   col=clamp(col+(col-nbr)*3.0,0.,1.);
 
   // ── Tone Curve: contrast(1.12) → brightness(1.15) ────────────────────────
-  col=(col-0.5)*1.12+0.5;   // contrast — 쨍함, 블랙 유지
-  col*=1.15;                 // brightness
+  col=(col-0.5)*1.12+0.5;
+  col*=1.15;
+
+  // ── 채도 -15% (전체 색감 차분하게) ──────────────────────────────────────
+  float luma=dot(col,vec3(0.299,0.587,0.114));
+  col=mix(vec3(luma),col,0.85);
+
+  // ── 색선명도 Vibrance +0.30 (낮은 채도 영역 집중 부스트) ─────────────
+  // 이미 채도 높은 색은 건드리지 않고, 낮은 채도 색만 살려줌
+  float sat=max(col.r,max(col.g,col.b))-min(col.r,min(col.g,col.b));
+  col=mix(vec3(luma),col,1.0+(1.0-sat)*0.30);
 
   o=vec4(clamp(col,0.,1.),1.);
 }`;
