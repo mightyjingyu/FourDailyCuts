@@ -90,9 +90,23 @@ vec3 lut(vec3 c){
 }
 void main(){
   // mirror X + flip Y (WebGL UV origin is bottom-left, video data is top-first)
-  // 필터 없음 — 미러만 적용
-  vec3 col=texture(u_video,vec2(1.-v_uv.x,1.-v_uv.y)).rgb;
-  o=vec4(col,1.);
+  vec2 uv=vec2(1.-v_uv.x,1.-v_uv.y);
+  vec3 col=texture(u_video,uv).rgb;
+
+  // 선명도 — unsharp mask (인접 4픽셀 평균과의 차이를 더함)
+  vec2 px=1.0/vec2(textureSize(u_video,0));
+  vec3 blur=(
+    texture(u_video,uv+vec2( px.x,0.)).rgb+
+    texture(u_video,uv+vec2(-px.x,0.)).rgb+
+    texture(u_video,uv+vec2(0., px.y)).rgb+
+    texture(u_video,uv+vec2(0.,-px.y)).rgb
+  )*0.25;
+  col=clamp(col+(col-blur)*0.5,0.,1.);  // strength 0.5
+
+  // 밝기 +8%
+  col*=1.08;
+
+  o=vec4(clamp(col,0.,1.),1.);
 }`;
 
 /**
