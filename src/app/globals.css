@@ -4,6 +4,19 @@
   box-sizing: border-box;
 }
 
+/* 프레임 선택 그리드 — 모바일에서 세로 스택 */
+.frame-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 560px) {
+  .frame-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 body {
   min-height: 100vh;
   font-family: var(--font-speech-cute), var(--font-jua), sans-serif;

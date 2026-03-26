@@ -359,17 +359,32 @@ export function SipgaeApp() {
       });
       await new Promise<void>((resolve, reject) => {
         canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              reject(new Error("blob"));
-              return;
+          async (blob) => {
+            if (!blob) { reject(new Error("blob")); return; }
+            const filename = `sipgae-${theme ?? "frame"}-${Date.now()}.png`;
+            const file = new File([blob], filename, { type: "image/png" });
+
+            // 모바일: Web Share API로 갤러리 저장 가능하게
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (navigator.share && (navigator as any).canShare?.({ files: [file] })) {
+              try {
+                await navigator.share({ files: [file], title: "일상네컷" });
+                resolve();
+                return;
+              } catch {
+                /* 취소 또는 미지원 → fallback */
+              }
             }
+
+            // 데스크톱 / fallback: <a download> 트리거
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `sipgae-${theme ?? "frame"}-${Date.now()}.png`;
+            a.download = filename;
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
             resolve();
           },
           "image/png",
@@ -502,17 +517,13 @@ export function SipgaeApp() {
               ← 홈
             </button>
             <h2 style={{ fontSize: "1.35rem", marginBottom: 8, color: "#111111" }}>프레임 선택</h2>
-            <p style={{ fontSize: "0.88rem", color: "#666666", marginBottom: 24 }}>
+            <p style={{ fontSize: "0.88rem", color: "#666666", marginBottom: 6 }}>
               원하시는 프레임을 선택한 후 촬영하기 버튼을 눌러주세요
             </p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 14,
-                alignItems: "start",
-              }}
-            >
+            <p style={{ fontSize: "0.76rem", color: "#999999", marginBottom: 20 }}>
+              (핸드폰으로 촬영할경우 양옆이 조금씩 잘려서 나오니 중앙에 모여서 찍어주세요)
+            </p>
+            <div className="frame-grid">
               <div>
                 <p style={{ fontSize: "0.82rem", color: "#666666", marginBottom: 10 }}>멍개 프레임</p>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
