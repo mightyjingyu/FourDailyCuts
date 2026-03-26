@@ -90,21 +90,9 @@ vec3 lut(vec3 c){
 }
 void main(){
   // mirror X + flip Y (WebGL UV origin is bottom-left, video data is top-first)
+  // 필터 없음 — 미러만 적용
   vec3 col=texture(u_video,vec2(1.-v_uv.x,1.-v_uv.y)).rgb;
-
-  // 3D LUT colour grade
-  col=lut(col);
-
-  // ── Highkey filter: brightness(1.23) contrast(1.06) saturate(1.12) ──────
-  // 1. Contrast
-  col=(col-0.5)*1.06+0.5;
-  // 2. Brightness (1.28→1.23: 뿌연 느낌 제거, 디테일 회복)
-  col*=1.23;
-  // 3. Saturation (1.15→1.12: Blue 낮아진 만큼 자연스럽게 조정)
-  float luma=dot(col,vec3(0.299,0.587,0.114));
-  col=mix(vec3(luma),col,1.12);
-
-  o=vec4(clamp(col,0.,1.),1.);
+  o=vec4(col,1.);
 }`;
 
 /**
