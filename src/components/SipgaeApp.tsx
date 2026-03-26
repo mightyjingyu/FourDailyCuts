@@ -246,41 +246,54 @@ export function SipgaeApp() {
     wctx.clearRect(0, 0, vw, vh);
     wctx.drawImage(preview, 0, 0);
 
-    // ── Pass 5: 피부 소프트닝 (페이스 오발 클립 + blur α0.38) ───────────
-    // α0.38 — 피부 결을 완전히 지우지 않고 매끄럽게만
+    // ── Pass 5: 피부 소프트닝 (페이스 오발 클립 + blur α0.35) ───────────
     const OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-    try {
-      ctx.save();
+    const drawOvalPath = () => {
       ctx.beginPath();
       ctx.moveTo(lx(OVAL[0]), ly(OVAL[0]));
       for (let i = 1; i < OVAL.length; i++) ctx.lineTo(lx(OVAL[i]), ly(OVAL[i]));
       ctx.closePath();
+    };
+    try {
+      ctx.save();
+      drawOvalPath();
       ctx.clip();
       ctx.filter = "blur(0.2px)";
-      ctx.globalAlpha = 0.38;
+      ctx.globalAlpha = 0.35;
       ctx.drawImage(work, 0, 0);
       ctx.restore();
     } catch { /* ctx.filter 미지원 */ }
+
+    // ── Pass 5b: 미백 (페이스 오발 screen 밝힘 — 피부만 화사하게) ─────────
+    // screen + 밝은 크림색 → 배경은 그대로, 피부만 하얗고 맑게
+    ctx.save();
+    drawOvalPath();
+    ctx.clip();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = "#FFF8F0";
+    ctx.fill();
+    ctx.restore();
 
     // work 갱신
     wctx.clearRect(0, 0, vw, vh);
     wctx.drawImage(preview, 0, 0);
 
-    // ── Pass 6: 눈 밝기 부스트 (brightness 1.18 — 맑고 빛나는 눈빛) ─────
-    // contrast 어둡힘 대신 brightness 밝힘 → 투명하고 생기 있는 눈
+    // ── Pass 6: 눈 밝기 부스트 (α0.14 — 효과만 있고 경계 안 보이게) ──────
+    // 낮은 alpha로 경계 링이 안 보이도록 조절
     if (lms.length >= 478) {
       const iRx = lx(468); const iRy = ly(468);
       const iLx = lx(473); const iLy = ly(473);
       const eyeW   = Math.abs(lx(33) - lx(133));
-      const eyeRad = eyeW * 0.52;
+      const eyeRad = eyeW * 0.55;   // 조금 넓게 → 경계가 눈꺼풀 바깥에
       try {
         const brightenEye = (ex: number, ey: number) => {
           ctx.save();
           ctx.beginPath();
-          ctx.ellipse(ex, ey, eyeRad, eyeRad * 0.62, 0, 0, Math.PI * 2);
+          ctx.ellipse(ex, ey, eyeRad, eyeRad * 0.65, 0, 0, Math.PI * 2);
           ctx.clip();
-          ctx.filter = "brightness(1.18) contrast(1.05)";
-          ctx.globalAlpha = 0.30;
+          ctx.filter = "brightness(1.15)";
+          ctx.globalAlpha = 0.14;   // 낮은 alpha → 경계 불투명하게 안 보임
           ctx.drawImage(work, 0, 0);
           ctx.restore();
         };
@@ -345,13 +358,13 @@ export function SipgaeApp() {
       }
     }
 
-    // ── Pass 9: 눈매 세로 0.2% 확장 ─────────────────────────────────────
+    // ── Pass 9: 눈매 세로 0.2% 확장 (α낮춰서 경계 안 보이게) ───────────
     if (lms.length >= 478) {
       const iRx = lx(468); const iRy = ly(468);
       const iLx = lx(473); const iLy = ly(473);
       const eyeW   = Math.abs(lx(33) - lx(133));
-      const eyeRad = eyeW * 0.52;
-      const eyeH   = eyeRad * 0.62;
+      const eyeRad = eyeW * 0.55;
+      const eyeH   = eyeRad * 0.65;
       const dstH   = eyeH * 2 * EYE_VERT_SCALE;
 
       const stretchEye = (ex: number, ey: number) => {
@@ -359,7 +372,7 @@ export function SipgaeApp() {
         ctx.beginPath();
         ctx.ellipse(ex, ey, eyeRad, eyeH, 0, 0, Math.PI * 2);
         ctx.clip();
-        ctx.globalAlpha = BEAUTY_EYE_ALPHA;
+        ctx.globalAlpha = 0.45;   // 낮은 alpha → 경계 희미하게
         ctx.drawImage(
           work,
           ex - eyeRad, ey - eyeH,      eyeRad * 2, eyeH * 2,
@@ -371,33 +384,24 @@ export function SipgaeApp() {
       stretchEye(iLx, iLy);
     }
 
-    // ── Pass 10: 캐치라이트 (10시 주광 α0.45 + 4시 부광 α0.15) ─────────
-    // 두 개의 반사광 = 자연스러운 스튜디오 조명 느낌
+    // ── Pass 10: 캐치라이트 (10시 방향 α0.18 — 존재감 없이 눈에 생기만) ─
+    // 과거 α0.45는 흰 점이 눈에 띄었음 → 매우 낮은 alpha로 은은하게
     if (lms.length >= 478) {
       const iRx = lx(468); const iRy = ly(468);
       const iLx = lx(473); const iLy = ly(473);
       const eyeW       = Math.abs(lx(33) - lx(133));
       const irisRadius = eyeW * 0.18;
-      const clR1       = Math.max(1.5, irisRadius * 0.24);
-      const clR2       = Math.max(1.0, irisRadius * 0.12);
-      // 10시: x축 -150°, 4시: x축 -30°
-      const a1 = (-150 * Math.PI) / 180;
-      const a2 = ( -30 * Math.PI) / 180;
-      const ox1 = Math.cos(a1) * irisRadius * 0.52;
-      const oy1 = Math.sin(a1) * irisRadius * 0.52;
-      const ox2 = Math.cos(a2) * irisRadius * 0.50;
-      const oy2 = Math.sin(a2) * irisRadius * 0.50;
+      const clR        = Math.max(1.2, irisRadius * 0.20);
+      const a1  = (-150 * Math.PI) / 180;
+      const ox1 = Math.cos(a1) * irisRadius * 0.50;
+      const oy1 = Math.sin(a1) * irisRadius * 0.50;
 
       const drawCatchlight = (ex: number, ey: number) => {
         ctx.save();
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
-        ctx.arc(ex + ox1, ey + oy1, clR1, 0, Math.PI * 2);
-        ctx.globalAlpha = 0.45;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(ex + ox2, ey + oy2, clR2, 0, Math.PI * 2);
-        ctx.globalAlpha = 0.15;
+        ctx.arc(ex + ox1, ey + oy1, clR, 0, Math.PI * 2);
+        ctx.globalAlpha = 0.18;   // 거의 안 보이는 수준 — 있는지 없는지 모르게
         ctx.fill();
         ctx.restore();
       };
