@@ -7,12 +7,9 @@ import { BASIC_FRAME_SLOT_ASPECT, PhotoFrame, type FrameTheme } from "./PhotoFra
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-// 내추럴 하이키 — 포토이즘 컨셉: 보정 티 안 나게, 실물보다 화사하게
-const CAMERA_FILTER    = "brightness(1.08) contrast(1.08) saturate(1.06) blur(0.08px)";
-const CHIN_SLIM        = 0.985;  // 턱선 1.5% 압축 — 자연스러운 V라인
-const EYE_VERT_SCALE   = 1.002;  // 눈매 세로 0.2% 미세 확장
-const BEAUTY_EYE_ALPHA = 0.62;
-const LERP_S           = 0.12;   // 반응성↑ jitter↓
+// Y2K 디지털 카메라 필터: 선명한 채도 + 쿨 블루 색조 + 밝고 또렷한 느낌
+const CAMERA_FILTER = "brightness(1.18) contrast(1.15) saturate(1.45) hue-rotate(-8deg)";
+const LERP_S        = 0.12;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
@@ -168,29 +165,31 @@ export function SipgaeApp() {
     wctx.imageSmoothingEnabled = true;
     wctx.imageSmoothingQuality = "high";
 
-    // ── Pass 1: 좌우 반전 + 내추럴 하이키 필터 → work ──────────────────────
-    wctx.save();
-    wctx.clearRect(0, 0, vw, vh);
-    wctx.filter = CAMERA_FILTER;
-    wctx.translate(vw, 0);
-    wctx.scale(-1, 1);
-    wctx.drawImage(video, 0, 0, vw, vh);
-    wctx.restore();
-
-    // ── Pass 2: base → preview ────────────────────────────────────────────
-    ctx.clearRect(0, 0, vw, vh);
-    ctx.drawImage(work, 0, 0);
-
-    // ── Pass 3: 웜톤 피부 글로우 (soft-light, 복숭아빛 따뜻한 광채) ──────
-    // 순백 soft-light는 회색빛 → #FFE8D8 복숭아 웜톤으로 자연스러운 발광
+    // ── Pass 1: 좌우 반전 + Y2K 필터 → preview ──────────────────────────
     ctx.save();
-    ctx.globalCompositeOperation = "soft-light";
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = "#FFE8D8";
+    ctx.clearRect(0, 0, vw, vh);
+    ctx.filter = CAMERA_FILTER;
+    ctx.translate(vw, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, vw, vh);
+    ctx.restore();
+
+    // ── Pass 2: 블랙 리프트 (lighten — Y2K 디지캠 특유의 뜬 어두운 영역)
+    ctx.save();
+    ctx.globalCompositeOperation = "lighten";
+    ctx.fillStyle = "#0d0d1a";   // 매우 어두운 남색 → 블랙이 완전 검정 안 됨
     ctx.fillRect(0, 0, vw, vh);
     ctx.restore();
 
-    // ── Face Mesh 비동기 갱신 (80 ms 쓰로틀) ─────────────────────────────
+    // ── Pass 3: 쿨 블루 하이라이트 (screen — Y2K CCD 색수차 느낌) ────────
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.055;
+    ctx.fillStyle = "#3355ff";
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.restore();
+
+    // ── Face Mesh 비동기 갱신 (80 ms 쓰로틀) — 피부 소프트닝 전용 ────────
     const now = Date.now();
     if (
       faceMeshReadyRef.current &&
@@ -205,209 +204,30 @@ export function SipgaeApp() {
       });
     }
 
-    // ── 랜드마크 기반 보정 ─────────────────────────────────────────────
+    // ── Pass 4: 피부 소프트닝 (랜드마크 있을 때만, 아주 은은하게) ─────────
     const lms = landmarksRef.current;
     if (!lms || lms.length < 468) return;
 
-    // 좌표 헬퍼: 정규화 랜드마크 → 캔버스 픽셀 (미러 적용)
     const lx = (i: number) => (1 - lms[i].x) * vw;
     const ly = (i: number) => lms[i].y * vh;
 
-    // 얼굴 기준값 — 뷰티 디쉬·와프 존 계산에 공유
-    const faceCx   = lx(1);                       // 코 중심 ≈ 얼굴 x
-    const faceTopY = ly(10);                       // 이마 상단
-    const faceBotY = ly(152);                      // 턱 끝
-    const faceH    = Math.max(1, faceBotY - faceTopY);
-    const faceCy   = faceTopY + faceH * 0.38;     // 눈 높이 ≈ 광원 중심
-    const faceW    = Math.max(1, Math.abs(lx(323) - lx(93)));
-
-    // work ← 현재 preview 스냅샷
+    // work ← 현재 preview 스냅샷 (소프트닝용)
     wctx.clearRect(0, 0, vw, vh);
     wctx.drawImage(preview, 0, 0);
 
-    // ── Pass 4: 뷰티 디쉬 (얼굴 중심 방사형 밝기) ────────────────────────
-    // 소프트박스처럼 얼굴 중앙만 살짝 빛남 — 배경은 변화 없음
-    try {
-      const grad = ctx.createRadialGradient(
-        faceCx, faceCy, 0,
-        faceCx, faceCy, faceH * 0.62,
-      );
-      grad.addColorStop(0,    "rgba(255,252,235, 0.11)");
-      grad.addColorStop(0.50, "rgba(255,252,235, 0.04)");
-      grad.addColorStop(1,    "rgba(255,252,235, 0)");
-      ctx.save();
-      ctx.globalCompositeOperation = "screen";
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, vw, vh);
-      ctx.restore();
-    } catch { /* gradient 미지원 */ }
-
-    // work 갱신
-    wctx.clearRect(0, 0, vw, vh);
-    wctx.drawImage(preview, 0, 0);
-
-    // ── Pass 5: 피부 소프트닝 (페이스 오발 클립 + blur α0.35) ───────────
     const OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-    const drawOvalPath = () => {
+    try {
+      ctx.save();
       ctx.beginPath();
       ctx.moveTo(lx(OVAL[0]), ly(OVAL[0]));
       for (let i = 1; i < OVAL.length; i++) ctx.lineTo(lx(OVAL[i]), ly(OVAL[i]));
       ctx.closePath();
-    };
-    try {
-      ctx.save();
-      drawOvalPath();
       ctx.clip();
-      ctx.filter = "blur(0.2px)";
-      ctx.globalAlpha = 0.35;
+      ctx.filter = "blur(0.3px)";
+      ctx.globalAlpha = 0.30;   // 아주 약하게 — Y2K는 선명함이 특징
       ctx.drawImage(work, 0, 0);
       ctx.restore();
     } catch { /* ctx.filter 미지원 */ }
-
-    // ── Pass 5b: 미백 (페이스 오발 screen 밝힘 — 피부만 화사하게) ─────────
-    // screen + 밝은 크림색 → 배경은 그대로, 피부만 하얗고 맑게
-    ctx.save();
-    drawOvalPath();
-    ctx.clip();
-    ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = 0.13;
-    ctx.fillStyle = "#FFF8F0";
-    ctx.fill();
-    ctx.restore();
-
-    // work 갱신
-    wctx.clearRect(0, 0, vw, vh);
-    wctx.drawImage(preview, 0, 0);
-
-    // ── Pass 6: 눈 밝기 부스트 (α0.14 — 효과만 있고 경계 안 보이게) ──────
-    // 낮은 alpha로 경계 링이 안 보이도록 조절
-    if (lms.length >= 478) {
-      const iRx = lx(468); const iRy = ly(468);
-      const iLx = lx(473); const iLy = ly(473);
-      const eyeW   = Math.abs(lx(33) - lx(133));
-      const eyeRad = eyeW * 0.55;   // 조금 넓게 → 경계가 눈꺼풀 바깥에
-      try {
-        const brightenEye = (ex: number, ey: number) => {
-          ctx.save();
-          ctx.beginPath();
-          ctx.ellipse(ex, ey, eyeRad, eyeRad * 0.65, 0, 0, Math.PI * 2);
-          ctx.clip();
-          ctx.filter = "brightness(1.15)";
-          ctx.globalAlpha = 0.14;   // 낮은 alpha → 경계 불투명하게 안 보임
-          ctx.drawImage(work, 0, 0);
-          ctx.restore();
-        };
-        brightenEye(iRx, iRy);
-        brightenEye(iLx, iLy);
-      } catch { /* ctx.filter 미지원 */ }
-
-      // work 갱신
-      wctx.clearRect(0, 0, vw, vh);
-      wctx.drawImage(preview, 0, 0);
-    }
-
-    // ── Pass 7: 턱선 슬림 (LM152 앵커, 타원 클립 — 경계 자연스럽게) ──────
-    // rect 클립 대신 얼굴 하관 타원으로 seam line 제거
-    {
-      const chinCx = lx(152);
-      if (faceBotY > 0 && faceBotY < vh) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.ellipse(chinCx, faceBotY, faceW * 0.58, faceH * 0.38, 0, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.globalAlpha = 0.65;
-        ctx.translate(chinCx, 0);
-        ctx.scale(CHIN_SLIM, 1);
-        ctx.translate(-chinCx, 0);
-        ctx.drawImage(work, 0, 0);
-        ctx.restore();
-      }
-
-      // work 갱신
-      wctx.clearRect(0, 0, vw, vh);
-      wctx.drawImage(preview, 0, 0);
-    }
-
-    // ── Pass 8: 중안부 1.5% 세로 압축 (3% → 1.5%로 줄여 자연스럽게) ────
-    {
-      const noseTipY  = ly(4);
-      const upperLipY = ly(13);
-      const midTop    = noseTipY - (upperLipY - noseTipY) * 0.4;
-      const midBot    = upperLipY + (upperLipY - noseTipY) * 0.15;
-      const zH        = midBot - midTop;
-      if (zH > 0) {
-        const dstH   = zH * 0.985;      // 1.5% 압축
-        const shift  = zH * 0.015 * 0.5;
-        const midCx  = faceCx;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.ellipse(midCx, (midTop + midBot) / 2, faceW * 0.30, zH * 0.52, 0, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.globalAlpha = 0.58;
-        ctx.drawImage(
-          work,
-          midCx - faceW * 0.30, midTop,         faceW * 0.60, zH,
-          midCx - faceW * 0.30, midTop - shift,  faceW * 0.60, dstH,
-        );
-        ctx.restore();
-
-        // work 갱신
-        wctx.clearRect(0, 0, vw, vh);
-        wctx.drawImage(preview, 0, 0);
-      }
-    }
-
-    // ── Pass 9: 눈매 세로 0.2% 확장 (α낮춰서 경계 안 보이게) ───────────
-    if (lms.length >= 478) {
-      const iRx = lx(468); const iRy = ly(468);
-      const iLx = lx(473); const iLy = ly(473);
-      const eyeW   = Math.abs(lx(33) - lx(133));
-      const eyeRad = eyeW * 0.55;
-      const eyeH   = eyeRad * 0.65;
-      const dstH   = eyeH * 2 * EYE_VERT_SCALE;
-
-      const stretchEye = (ex: number, ey: number) => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.ellipse(ex, ey, eyeRad, eyeH, 0, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.globalAlpha = 0.45;   // 낮은 alpha → 경계 희미하게
-        ctx.drawImage(
-          work,
-          ex - eyeRad, ey - eyeH,      eyeRad * 2, eyeH * 2,
-          ex - eyeRad, ey - dstH / 2,  eyeRad * 2, dstH,
-        );
-        ctx.restore();
-      };
-      stretchEye(iRx, iRy);
-      stretchEye(iLx, iLy);
-    }
-
-    // ── Pass 10: 캐치라이트 (10시 방향 α0.18 — 존재감 없이 눈에 생기만) ─
-    // 과거 α0.45는 흰 점이 눈에 띄었음 → 매우 낮은 alpha로 은은하게
-    if (lms.length >= 478) {
-      const iRx = lx(468); const iRy = ly(468);
-      const iLx = lx(473); const iLy = ly(473);
-      const eyeW       = Math.abs(lx(33) - lx(133));
-      const irisRadius = eyeW * 0.18;
-      const clR        = Math.max(1.2, irisRadius * 0.20);
-      const a1  = (-150 * Math.PI) / 180;
-      const ox1 = Math.cos(a1) * irisRadius * 0.50;
-      const oy1 = Math.sin(a1) * irisRadius * 0.50;
-
-      const drawCatchlight = (ex: number, ey: number) => {
-        ctx.save();
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(ex + ox1, ey + oy1, clR, 0, Math.PI * 2);
-        ctx.globalAlpha = 0.18;   // 거의 안 보이는 수준 — 있는지 없는지 모르게
-        ctx.fill();
-        ctx.restore();
-      };
-      drawCatchlight(iRx, iRy);
-      drawCatchlight(iLx, iLy);
-    }
   }, []);
 
   useEffect(() => {
