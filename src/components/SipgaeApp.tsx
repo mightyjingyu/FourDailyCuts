@@ -7,10 +7,10 @@ import { BASIC_FRAME_SLOT_ASPECT, PhotoFrame, type FrameTheme } from "./PhotoFra
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-// 포토이즘 필터: 가장 '뽀얀' 느낌의 조합
-const CAMERA_FILTER    = "contrast(1.1) brightness(1.1) saturate(1.05) blur(0.3px)";
-const BEAUTY_SLIM      = 0.97;   // V-line: 3 % 가로 압축 (자연스러운 슬림)
-const BEAUTY_EYE_ZOOM  = 1.05;   // 눈 5 % 확대
+// 하이키 뽀샤시 필터: 밝고 맑은 피부 표현
+const CAMERA_FILTER    = "contrast(1.05) brightness(1.25) saturate(1.0) sepia(0.05) blur(0.2px)";
+const BEAUTY_SLIM      = 0.95;   // V-line: 5 % 가로 압축 (강화 슬림)
+const BEAUTY_EYE_ZOOM  = 1.08;   // 눈 8 % 확대
 const BEAUTY_EYE_ALPHA = 0.84;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
@@ -196,11 +196,35 @@ export function SipgaeApp() {
     if (leftGap > 0)  ctx.drawImage(work, 0, 0, 1, vh, 0, 0, leftGap + 1, vh);
     if (rightGap > 0) ctx.drawImage(work, vw - 1, 0, 1, vh, vw - rightGap - 1, 0, rightGap + 1, vh);
 
-    // ── Pass 3: 피치-핑크 soft-light 오버레이 (포토이즘 피부 색감) ─────────
+    // ── Pass 2b: 하관·턱 V-line 추가 압축 ────────────────────────────────
+    // FaceDetector 데이터 있을 때, 하관 이하(bbox.cy + h*0.3)를 추가 0.97x 압축
+    // 전체 0.95 × 0.97 ≈ 0.92 — 턱이 이마보다 더 슬림해지는 V-line 효과
+    {
+      const fdChin = faceDataRef.current;
+      if (fdChin) {
+        const chinY = fdChin.bbox.cy + fdChin.bbox.h * 0.3;
+        if (chinY < vh) {
+          wctx.clearRect(0, 0, vw, vh);
+          wctx.drawImage(preview, 0, 0);      // work ← 현재 0.95 슬림 스냅샷
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, chinY, vw, vh - chinY);
+          ctx.clip();
+          ctx.globalAlpha = 0.72;             // 0.28 원본 + 0.72 추가압축 블렌딩
+          ctx.translate(fcx, 0);
+          ctx.scale(0.97, 1);
+          ctx.translate(-fcx, 0);
+          ctx.drawImage(work, 0, 0, vw, vh);
+          ctx.restore();
+        }
+      }
+    }
+
+    // ── Pass 3: 핑크-화이트 soft-light 오버레이 (맑고 투명한 피부 색감) ──
     ctx.save();
     ctx.globalCompositeOperation = "soft-light";
-    ctx.globalAlpha = 0.14;
-    ctx.fillStyle = "#FFCBA4";
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#FFF5F7";
     ctx.fillRect(0, 0, vw, vh);
     ctx.restore();
 
@@ -292,8 +316,8 @@ export function SipgaeApp() {
       const zoneTop = noseY - faceH * 0.08;
       const zoneBot = noseY + faceH * 0.22;
       const zoneH   = zoneBot - zoneTop;
-      const dstH    = zoneH * 0.96;   // 4 % 세로 압축
-      const shift   = zoneH * 0.04;   // 위로 시프트
+      const dstH    = zoneH * 0.94;   // 6 % 세로 압축 (동안 중안부)
+      const shift   = zoneH * 0.06;   // 위로 시프트
 
       ctx.save();
       ctx.beginPath();
@@ -344,6 +368,25 @@ export function SipgaeApp() {
 
     drawCatchlight(fd.eyes[0].x, fd.eyes[0].y);
     drawCatchlight(fd.eyes[1].x, fd.eyes[1].y);
+
+    // ── Pass 6b: 눈 선명도 강화 (local contrast boost, unsharp mask 근사) ──
+    // ctx.filter로 고대비 버전을 낮은 alpha로 덧입혀 엣지 선명도 강화
+    // Chrome/Edge/Safari 15+ 지원 — 미지원 브라우저는 silent skip
+    try {
+      const sharpEye = (ex: number, ey: number) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(ex, ey, eyeR * 0.75, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.globalAlpha = 0.28;
+        ctx.filter = "contrast(1.8) brightness(0.96)";
+        ctx.drawImage(work, ex - eyeR, ey - eyeR, srcSide, srcSide,
+                            ex - eyeR, ey - eyeR, srcSide, srcSide);
+        ctx.restore();
+      };
+      sharpEye(fd.eyes[0].x, fd.eyes[0].y);
+      sharpEye(fd.eyes[1].x, fd.eyes[1].y);
+    } catch { /* ctx.filter 미지원 */ }
   }, []);
 
   useEffect(() => {
