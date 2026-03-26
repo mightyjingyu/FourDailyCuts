@@ -28,12 +28,10 @@ function buildPhotoismLUT(): Uint8Array {
   const sc = (x: number) =>
     x + Math.sin(x * Math.PI) * (x < 0.5 ? 0.04 : -0.04);
 
-  // R: +3% — 피부 생기 회복
-  const R = (x: number) => sc(Math.min(1, x * 1.03));
-  // G: +5% — 밝기 유지
-  const G = (x: number) => sc(Math.min(1, x * 1.05));
-  // B: 섀도 +4%, 하이라이트 +6.5% (x² 커브 — 차가움 완화)
-  const B = (x: number) => sc(Math.min(1, x * 1.04 + x * x * 0.025));
+  // R/G/B 동일 — 색감 없음, 밝기만 살짝 올림
+  const R = (x: number) => sc(Math.min(1, x * 1.04));
+  const G = (x: number) => sc(Math.min(1, x * 1.04));
+  const B = (x: number) => sc(Math.min(1, x * 1.04));
 
   for (let b = 0; b < LUT_N; b++) {
     for (let g = 0; g < LUT_N; g++) {
@@ -155,11 +153,6 @@ void main(){
   float m=mask(v_uv);
   // inside face: 40% skin softening blend
   vec3 result=mix(sharp,mix(sharp,soft,.40),m);
-
-  // ── Alice Blue overlay (#f0f8ff, α=0.10) — 안개 낀 느낌 제거 ───────────
-  // screen blend: result + alice*α*(1-result) — 섀도 너무 파래지지 않음
-  const vec3 ALICE=vec3(0.941,0.973,1.0);
-  result=result+ALICE*0.10*(1.0-result);
 
   o=vec4(clamp(result,0.,1.),1.);
 }`;
