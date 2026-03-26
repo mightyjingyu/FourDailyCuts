@@ -101,7 +101,7 @@ void main(){
     texture(u_video,uv+vec2(0., px.y)).rgb+
     texture(u_video,uv+vec2(0.,-px.y)).rgb
   )*0.25;
-  col=clamp(col+(col-blur)*1.4,0.,1.);  // strength 1.4
+  col=clamp(col+(col-blur)*3.0,0.,1.);  // strength 3.0
 
   // 밝기 +15%
   col*=1.15;
