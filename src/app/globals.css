@@ -6,9 +6,9 @@
 
 body {
   min-height: 100vh;
-  font-family: var(--font-jua), sans-serif;
-  background: #f0eaf8;
-  color: #3a2a4a;
+  font-family: var(--font-speech-cute), var(--font-jua), sans-serif;
+  background: #fafaf8;
+  color: #111111;
 }
 
 /* 배경 플로팅 */
@@ -21,9 +21,8 @@ body {
 }
 .bg-i {
   position: absolute;
-  opacity: 0.13;
+  opacity: 0.18;
   animation: bfloat linear infinite;
-  /* 부모는 pointer-events: none이지만 자식은 기본 auto라 클릭을 가로챌 수 있음 */
   pointer-events: none;
 }
 @keyframes bfloat {
@@ -466,7 +465,7 @@ body {
 }
 .slot-lbl {
   font-size: 0.58rem;
-  color: #aaa;
+  color: #888888;
   margin-top: 2px;
 }
 .slot.slotReadonly {

@@ -554,16 +554,16 @@ export function SipgaeApp() {
                 width: 250,
                 height: 250,
                 objectFit: "contain",
-                filter: "drop-shadow(0 6px 16px rgba(90, 60, 120, 0.15))",
+                filter: "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.12))",
                 marginBottom: -36,
               }}
             />
             <h1
               style={{
-                fontSize: "2.06rem",
-                color: "#4f3b79",
-                fontWeight: 900,
-                letterSpacing: "0.5px",
+                fontSize: "2.2rem",
+                color: "#111111",
+                fontWeight: 400,
+                letterSpacing: "1px",
                 lineHeight: 1.2,
               }}
             >
@@ -571,15 +571,14 @@ export function SipgaeApp() {
             </h1>
             <p
               style={{
-                fontSize: "1.2rem",
-                color: "#5b4585",
+                fontSize: "1.15rem",
+                color: "#222222",
                 lineHeight: 1.45,
-                fontWeight: 800,
               }}
             >
               일상을 소중하개
             </p>
-            <p style={{ fontSize: "0.93rem", color: "#756687", opacity: 0.95, lineHeight: 1.6 }}>
+            <p style={{ fontSize: "0.95rem", color: "#666666", lineHeight: 1.6 }}>
               여러분의 일상을 네컷으로 담아보세요
             </p>
             <button
@@ -588,16 +587,17 @@ export function SipgaeApp() {
               style={{
                 position: "relative",
                 zIndex: 1,
-                marginTop: 12,
-                padding: "14px 32px",
+                marginTop: 16,
+                padding: "13px 36px",
                 fontSize: "1.05rem",
                 fontFamily: "inherit",
-                border: "none",
-                borderRadius: 999,
-                background: "linear-gradient(135deg, #c8a8f0, #a8d8e8)",
-                color: "#2a2040",
-                boxShadow: "0 6px 20px rgba(90, 60, 140, 0.25)",
+                border: "2px solid #111111",
+                borderRadius: "4px",
+                background: "#111111",
+                color: "#ffffff",
+                boxShadow: "4px 4px 0 rgba(0, 0, 0, 0.2)",
                 cursor: "pointer",
+                letterSpacing: "1.5px",
               }}
             >
               시작하기
@@ -612,18 +612,20 @@ export function SipgaeApp() {
               onClick={() => setStep("home")}
               style={{
                 marginBottom: 20,
-                padding: "8px 14px",
+                padding: "7px 14px",
                 fontFamily: "inherit",
-                borderRadius: 10,
-                border: "1px solid rgba(90,60,140,0.2)",
-                background: "rgba(255,255,255,0.6)",
+                borderRadius: "3px",
+                border: "1.5px solid rgba(0, 0, 0, 0.35)",
+                background: "rgba(255, 255, 255, 0.85)",
+                color: "#111111",
                 cursor: "pointer",
+                boxShadow: "2px 2px 0 rgba(0, 0, 0, 0.1)",
               }}
             >
               ← 홈
             </button>
-            <h2 style={{ fontSize: "1.35rem", marginBottom: 8, color: "#4a3868" }}>프레임 선택</h2>
-            <p style={{ fontSize: "0.88rem", color: "#6a5888", marginBottom: 24 }}>
+            <h2 style={{ fontSize: "1.35rem", marginBottom: 8, color: "#111111" }}>프레임 선택</h2>
+            <p style={{ fontSize: "0.88rem", color: "#666666", marginBottom: 24 }}>
               원하시는 프레임을 선택한 후 촬영하기 버튼을 눌러주세요
             </p>
             <div
@@ -635,7 +637,7 @@ export function SipgaeApp() {
               }}
             >
               <div>
-                <p style={{ fontSize: "0.82rem", color: "#6d5b88", marginBottom: 10 }}>멍개 프레임</p>
+                <p style={{ fontSize: "0.82rem", color: "#666666", marginBottom: 10 }}>멍개 프레임</p>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 <button
                   type="button"
@@ -648,10 +650,12 @@ export function SipgaeApp() {
                     width: 36,
                     height: 36,
                     borderRadius: "50%",
-                    border: "1px solid rgba(90,60,140,0.28)",
-                    background: "rgba(255,255,255,0.72)",
+                    border: "1.5px solid rgba(0, 0, 0, 0.35)",
+                    background: "rgba(255, 255, 255, 0.9)",
+                    color: "#111111",
                     cursor: "pointer",
                     fontSize: "1.1rem",
+                    boxShadow: "2px 2px 0 rgba(0, 0, 0, 0.1)",
                   }}
                   aria-label="이전 멍개 프레임"
                 >
@@ -662,15 +666,19 @@ export function SipgaeApp() {
                   onClick={() => setSelectedTheme(currentDailyEditionTheme.id)}
                   style={{
                     padding: "10px 8px 6px",
-                    borderRadius: 14,
+                    borderRadius: "6px",
                     border:
                       selectedTheme === currentDailyEditionTheme.id
-                        ? "2px solid #6f56b5"
-                        : "2px solid transparent",
+                        ? "2px solid #111111"
+                        : "1.5px solid rgba(0, 0, 0, 0.2)",
                     background:
                       selectedTheme === currentDailyEditionTheme.id
-                        ? "rgba(255,255,255,0.9)"
-                        : "rgba(255,255,255,0.58)",
+                        ? "rgba(255, 255, 255, 0.95)"
+                        : "rgba(255, 255, 255, 0.6)",
+                    boxShadow:
+                      selectedTheme === currentDailyEditionTheme.id
+                        ? "3px 3px 0 rgba(0, 0, 0, 0.18)"
+                        : "1px 1px 0 rgba(0, 0, 0, 0.06)",
                     fontFamily: "inherit",
                     cursor: "pointer",
                     textAlign: "center",
@@ -696,10 +704,12 @@ export function SipgaeApp() {
                     width: 36,
                     height: 36,
                     borderRadius: "50%",
-                    border: "1px solid rgba(90,60,140,0.28)",
-                    background: "rgba(255,255,255,0.72)",
+                    border: "1.5px solid rgba(0, 0, 0, 0.35)",
+                    background: "rgba(255, 255, 255, 0.9)",
+                    color: "#111111",
                     cursor: "pointer",
                     fontSize: "1.1rem",
+                    boxShadow: "2px 2px 0 rgba(0, 0, 0, 0.1)",
                   }}
                   aria-label="다음 멍개 프레임"
                 >
@@ -708,7 +718,7 @@ export function SipgaeApp() {
               </div>
               </div>
               <div>
-                <p style={{ fontSize: "0.82rem", color: "#6d5b88", marginBottom: 10 }}>기본 프레임</p>
+                <p style={{ fontSize: "0.82rem", color: "#666666", marginBottom: 10 }}>기본 프레임</p>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 <button
                   type="button"
@@ -719,10 +729,12 @@ export function SipgaeApp() {
                     width: 36,
                     height: 36,
                     borderRadius: "50%",
-                    border: "1px solid rgba(90,60,140,0.28)",
-                    background: "rgba(255,255,255,0.72)",
+                    border: "1.5px solid rgba(0, 0, 0, 0.35)",
+                    background: "rgba(255, 255, 255, 0.9)",
+                    color: "#111111",
                     cursor: "pointer",
                     fontSize: "1.1rem",
+                    boxShadow: "2px 2px 0 rgba(0, 0, 0, 0.1)",
                   }}
                   aria-label="이전 기본 프레임"
                 >
@@ -733,15 +745,19 @@ export function SipgaeApp() {
                   onClick={() => setSelectedTheme(currentBasicTheme.id)}
                   style={{
                     padding: "10px 8px 6px",
-                    borderRadius: 14,
+                    borderRadius: "6px",
                     border:
                       selectedTheme === currentBasicTheme.id
-                        ? "2px solid #6f56b5"
-                        : "2px solid transparent",
+                        ? "2px solid #111111"
+                        : "1.5px solid rgba(0, 0, 0, 0.2)",
                     background:
                       selectedTheme === currentBasicTheme.id
-                        ? "rgba(255,255,255,0.9)"
-                        : "rgba(255,255,255,0.58)",
+                        ? "rgba(255, 255, 255, 0.95)"
+                        : "rgba(255, 255, 255, 0.6)",
+                    boxShadow:
+                      selectedTheme === currentBasicTheme.id
+                        ? "3px 3px 0 rgba(0, 0, 0, 0.18)"
+                        : "1px 1px 0 rgba(0, 0, 0, 0.06)",
                     fontFamily: "inherit",
                     cursor: "pointer",
                     textAlign: "center",
@@ -765,10 +781,12 @@ export function SipgaeApp() {
                     width: 36,
                     height: 36,
                     borderRadius: "50%",
-                    border: "1px solid rgba(90,60,140,0.28)",
-                    background: "rgba(255,255,255,0.72)",
+                    border: "1.5px solid rgba(0, 0, 0, 0.35)",
+                    background: "rgba(255, 255, 255, 0.9)",
+                    color: "#111111",
                     cursor: "pointer",
                     fontSize: "1.1rem",
+                    boxShadow: "2px 2px 0 rgba(0, 0, 0, 0.1)",
                   }}
                   aria-label="다음 기본 프레임"
                 >
@@ -783,15 +801,17 @@ export function SipgaeApp() {
                 disabled={!selectedTheme}
                 onClick={() => selectedTheme && openPayment(selectedTheme)}
                 style={{
-                  padding: "13px 28px",
-                  borderRadius: 999,
-                  border: "none",
+                  padding: "13px 32px",
+                  borderRadius: "4px",
+                  border: "2px solid #111111",
                   fontFamily: "inherit",
                   fontSize: "0.98rem",
                   cursor: selectedTheme ? "pointer" : "not-allowed",
-                  opacity: selectedTheme ? 1 : 0.55,
-                  background: "linear-gradient(135deg, #b8a0e0, #90c0e8)",
-                  color: "#1a1028",
+                  opacity: selectedTheme ? 1 : 0.5,
+                  background: selectedTheme ? "#111111" : "rgba(0, 0, 0, 0.2)",
+                  color: selectedTheme ? "#ffffff" : "#666666",
+                  boxShadow: selectedTheme ? "4px 4px 0 rgba(0, 0, 0, 0.2)" : "none",
+                  letterSpacing: "1.5px",
                 }}
               >
                 촬영하기
@@ -813,7 +833,7 @@ export function SipgaeApp() {
               alignItems: "center",
               justifyContent: "center",
               padding: 20,
-              background: "rgba(40, 30, 60, 0.45)",
+              background: "rgba(0, 0, 0, 0.4)",
             }}
           >
             <div
@@ -821,18 +841,19 @@ export function SipgaeApp() {
                 maxWidth: 380,
                 width: "100%",
                 padding: "28px 24px",
-                borderRadius: 20,
-                background: "#fffefb",
-                boxShadow: "0 20px 50px rgba(0,0,0,0.15)",
+                borderRadius: "8px",
+                border: "2px solid #111111",
+                background: "#ffffff",
+                boxShadow: "6px 6px 0 rgba(0, 0, 0, 0.15), 0 20px 40px rgba(0,0,0,0.12)",
               }}
             >
-              <h2 id="pay-title" style={{ fontSize: "1.2rem", marginBottom: 12, color: "#4a3868" }}>
+              <h2 id="pay-title" style={{ fontSize: "1.2rem", marginBottom: 12, color: "#111111" }}>
                 양심 결제 1,000원
               </h2>
-              <p style={{ fontSize: "0.95rem", lineHeight: 1.55, color: "#5a4868", marginBottom: 16 }}>
+              <p style={{ fontSize: "0.95rem", lineHeight: 1.55, color: "#222222", marginBottom: 16 }}>
                 당신의 양심을 믿습니다.
               </p>
-              <p style={{ fontSize: "0.85rem", lineHeight: 1.5, color: "#7a6888", marginBottom: 20 }}>
+              <p style={{ fontSize: "0.85rem", lineHeight: 1.5, color: "#666666", marginBottom: 20 }}>
                 아래 계좌로 1,000원을 송금해 주세요. (데모: 실제 계좌는 운영 시 설정)
                 <br />
                 <strong>은행 · 계좌번호</strong> 플레이스홀더
@@ -846,9 +867,10 @@ export function SipgaeApp() {
                     minWidth: 100,
                     padding: "12px 16px",
                     fontFamily: "inherit",
-                    borderRadius: 12,
-                    border: "1px solid #ccc",
-                    background: "#fff",
+                    borderRadius: "4px",
+                    border: "1.5px solid rgba(0, 0, 0, 0.3)",
+                    background: "#ffffff",
+                    color: "#111111",
                     cursor: "pointer",
                   }}
                 >
@@ -862,11 +884,12 @@ export function SipgaeApp() {
                     minWidth: 120,
                     padding: "12px 16px",
                     fontFamily: "inherit",
-                    borderRadius: 12,
-                    border: "none",
-                    background: "linear-gradient(135deg, #b8a0e0, #90c0e8)",
-                    color: "#1a1028",
+                    borderRadius: "4px",
+                    border: "2px solid #111111",
+                    background: "#111111",
+                    color: "#ffffff",
                     cursor: "pointer",
+                    boxShadow: "3px 3px 0 rgba(0, 0, 0, 0.2)",
                   }}
                 >
                   입금 완료
@@ -887,15 +910,15 @@ export function SipgaeApp() {
               gap: 16,
             }}
           >
-            <p style={{ fontSize: "1.4rem" }}>준비 중…</p>
-            <p style={{ fontSize: "0.9rem", color: "#6a5888" }}>3초 후 촬영 화면으로 이동해요.</p>
+            <p style={{ fontSize: "1.4rem", color: "#111111" }}>준비 중…</p>
+            <p style={{ fontSize: "0.9rem", color: "#666666" }}>3초 후 촬영 화면으로 이동해요.</p>
             <div
               style={{
                 width: 48,
                 height: 48,
                 borderRadius: "50%",
-                border: "4px solid #e8d8ff",
-                borderTopColor: "#9060d8",
+                border: "4px solid rgba(0, 0, 0, 0.15)",
+                borderTopColor: "#111111",
                 animation: "sipgae-spin 0.9s linear infinite",
               }}
             />
@@ -997,7 +1020,7 @@ export function SipgaeApp() {
           <main style={{ width: "100%", maxWidth: 720, display: "flex", flexDirection: "column", gap: 24 }}>
             <div style={{ display: "flex", justifyContent: "center" }}>
               <div style={{ flex: "0 0 auto" }}>
-                <p style={{ fontSize: "0.9rem", marginBottom: 8, color: "#4a3868", textAlign: "center" }}>
+                <p style={{ fontSize: "0.9rem", marginBottom: 8, color: "#222222", textAlign: "center" }}>
                   완성된 네컷 프레임
                 </p>
                 <PhotoFrame
@@ -1015,14 +1038,16 @@ export function SipgaeApp() {
                 disabled={exporting}
                 onClick={downloadPng}
                 style={{
-                  padding: "14px 28px",
+                  padding: "13px 28px",
                   fontSize: "1rem",
                   fontFamily: "inherit",
-                  border: "none",
-                  borderRadius: 999,
-                  background: "linear-gradient(135deg, #7fc99a, #6ab0d8)",
-                  color: "#102018",
+                  border: "2px solid #111111",
+                  borderRadius: "4px",
+                  background: "#111111",
+                  color: "#ffffff",
                   cursor: exporting ? "wait" : "pointer",
+                  boxShadow: "3px 3px 0 rgba(0, 0, 0, 0.2)",
+                  letterSpacing: "1px",
                 }}
               >
                 {exporting ? "저장 중…" : "고화질 이미지 저장"}
@@ -1031,13 +1056,15 @@ export function SipgaeApp() {
                 type="button"
                 onClick={restart}
                 style={{
-                  padding: "14px 24px",
+                  padding: "13px 24px",
                   fontSize: "1rem",
                   fontFamily: "inherit",
-                  borderRadius: 999,
-                  border: "1px solid rgba(90,60,140,0.3)",
-                  background: "rgba(255,255,255,0.7)",
+                  borderRadius: "4px",
+                  border: "1.5px solid rgba(0, 0, 0, 0.35)",
+                  background: "rgba(255, 255, 255, 0.85)",
+                  color: "#111111",
                   cursor: "pointer",
+                  boxShadow: "2px 2px 0 rgba(0, 0, 0, 0.1)",
                 }}
               >
                 처음으로
