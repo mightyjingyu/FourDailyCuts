@@ -14,29 +14,29 @@ const LUT_N = 32; // 32³ colour grid
 
 /**
  * Photoism "Natural High-Key" LUT
- * • Shadow lift  +3 %  → no pure black
- * • Brightness   +7 %  overall
- * • Warm mids    +2 % R / +1 % G
- * • Gentle S-curve contrast
- * • 7 % desaturation toward luminance
+ * 포토이즘 특유의 밝고 맑은 뉴트럴-쿨 톤
+ * • Shadow lift  +2 %  → 순수 검정 없음
+ * • Brightness   +5 %  균일 밝기
+ * • 채널 균형: R/G/B 거의 동일 — 피부가 오렌지로 안 뜸
+ * • 하이라이트에 살짝 쿨: 맑고 깨끗한 느낌
+ * • 5 % 탈채도
  */
 function buildPhotoismLUT(): Uint8Array {
   const data = new Uint8Array(LUT_N * LUT_N * LUT_N * 4);
 
-  /** Gentle S-curve: adds contrast without clipping */
+  /** Gentle S-curve */
   const sc = (x: number) =>
-    x + Math.sin(x * Math.PI) * (x < 0.5 ? 0.05 : -0.05);
+    x + Math.sin(x * Math.PI) * (x < 0.5 ? 0.04 : -0.04);
 
-  /** Per-channel curve applied after shadow-lift + brightness */
-  const R = (x: number) => sc(Math.min(1, x * 1.07 + 4 * x * (1 - x) * 0.022));
-  const G = (x: number) => sc(Math.min(1, x * 1.05 + 4 * x * (1 - x) * 0.010));
-  const B = (x: number) =>
-    sc(Math.max(0, Math.min(1, x * 1.02 - 4 * x * (1 - x) * 0.018 + x * x * 0.03)));
+  /** 균형잡힌 채널 커브 — 오렌지 캐스트 없음 */
+  const R = (x: number) => sc(Math.min(1, x * 1.04 + 4 * x * (1 - x) * 0.005));
+  const G = (x: number) => sc(Math.min(1, x * 1.05));
+  const B = (x: number) => sc(Math.min(1, x * 1.05 + x * x * 0.025)); // 하이라이트만 살짝 쿨
 
   for (let b = 0; b < LUT_N; b++) {
     for (let g = 0; g < LUT_N; g++) {
       for (let r = 0; r < LUT_N; r++) {
-        const lift = 0.03;
+        const lift = 0.02;
         let ri = (r / (LUT_N - 1)) * (1 - lift) + lift;
         let gi = (g / (LUT_N - 1)) * (1 - lift) + lift;
         let bi = (b / (LUT_N - 1)) * (1 - lift) + lift;
@@ -45,9 +45,9 @@ function buildPhotoismLUT(): Uint8Array {
         gi = G(gi);
         bi = B(bi);
 
-        // slight desaturation toward luminance
+        // 5 % 탈채도 → 피부 자연스럽게
         const lum = ri * 0.299 + gi * 0.587 + bi * 0.114;
-        const ds = 0.07;
+        const ds = 0.05;
         ri = ri * (1 - ds) + lum * ds;
         gi = gi * (1 - ds) + lum * ds;
         bi = bi * (1 - ds) + lum * ds;
