@@ -7,12 +7,12 @@ import { BASIC_FRAME_SLOT_ASPECT, PhotoFrame, type FrameTheme } from "./PhotoFra
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-// 내추럴 하이키 — 포토이즘 컨셉: 무보정인 듯 화사한 실물 느낌
-const CAMERA_FILTER    = "brightness(1.18) contrast(1.02) saturate(1.05) blur(0.1px)";
-const CHIN_SLIM        = 0.97;   // 턱선 3% 압축 (라인 정리)
-const EYE_VERT_SCALE   = 1.003;  // 눈매 세로 0.3% 미세 확장
-const BEAUTY_EYE_ALPHA = 0.72;
-const LERP_S           = 0.15;   // Face Mesh 스무딩 factor
+// 내추럴 하이키 — 포토이즘 컨셉: 보정 티 안 나게, 실물보다 화사하게
+const CAMERA_FILTER    = "brightness(1.08) contrast(1.08) saturate(1.06) blur(0.08px)";
+const CHIN_SLIM        = 0.985;  // 턱선 1.5% 압축 — 자연스러운 V라인
+const EYE_VERT_SCALE   = 1.002;  // 눈매 세로 0.2% 미세 확장
+const BEAUTY_EYE_ALPHA = 0.62;
+const LERP_S           = 0.12;   // 반응성↑ jitter↓
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
@@ -177,23 +177,16 @@ export function SipgaeApp() {
     wctx.drawImage(video, 0, 0, vw, vh);
     wctx.restore();
 
-    // ── Pass 2: base copy → preview ───────────────────────────────────────
+    // ── Pass 2: base → preview ────────────────────────────────────────────
     ctx.clearRect(0, 0, vw, vh);
     ctx.drawImage(work, 0, 0);
 
-    // ── Pass 3: 섀도 리프트 (screen composite — 어두운 영역 자연스럽게 밝힘)
-    ctx.save();
-    ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = 0.10;
-    ctx.fillStyle = "#404040";
-    ctx.fillRect(0, 0, vw, vh);
-    ctx.restore();
-
-    // ── Pass 4: 화이트 soft-light 오버레이 (맑고 투명한 피부 표현) ─────────
+    // ── Pass 3: 웜톤 피부 글로우 (soft-light, 복숭아빛 따뜻한 광채) ──────
+    // 순백 soft-light는 회색빛 → #FFE8D8 복숭아 웜톤으로 자연스러운 발광
     ctx.save();
     ctx.globalCompositeOperation = "soft-light";
-    ctx.globalAlpha = 0.09;
-    ctx.fillStyle = "#FFFFFF";
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#FFE8D8";
     ctx.fillRect(0, 0, vw, vh);
     ctx.restore();
 
@@ -212,7 +205,7 @@ export function SipgaeApp() {
       });
     }
 
-    // ── 랜드마크 기반 보정 (Face Mesh 결과 있을 때만) ─────────────────────
+    // ── 랜드마크 기반 보정 ─────────────────────────────────────────────
     const lms = landmarksRef.current;
     if (!lms || lms.length < 468) return;
 
@@ -220,11 +213,41 @@ export function SipgaeApp() {
     const lx = (i: number) => (1 - lms[i].x) * vw;
     const ly = (i: number) => lms[i].y * vh;
 
+    // 얼굴 기준값 — 뷰티 디쉬·와프 존 계산에 공유
+    const faceCx   = lx(1);                       // 코 중심 ≈ 얼굴 x
+    const faceTopY = ly(10);                       // 이마 상단
+    const faceBotY = ly(152);                      // 턱 끝
+    const faceH    = Math.max(1, faceBotY - faceTopY);
+    const faceCy   = faceTopY + faceH * 0.38;     // 눈 높이 ≈ 광원 중심
+    const faceW    = Math.max(1, Math.abs(lx(323) - lx(93)));
+
     // work ← 현재 preview 스냅샷
     wctx.clearRect(0, 0, vw, vh);
     wctx.drawImage(preview, 0, 0);
 
-    // ── Pass 5: 피부 소프트닝 (페이스 오발 클립 + blur) ──────────────────
+    // ── Pass 4: 뷰티 디쉬 (얼굴 중심 방사형 밝기) ────────────────────────
+    // 소프트박스처럼 얼굴 중앙만 살짝 빛남 — 배경은 변화 없음
+    try {
+      const grad = ctx.createRadialGradient(
+        faceCx, faceCy, 0,
+        faceCx, faceCy, faceH * 0.62,
+      );
+      grad.addColorStop(0,    "rgba(255,252,235, 0.11)");
+      grad.addColorStop(0.50, "rgba(255,252,235, 0.04)");
+      grad.addColorStop(1,    "rgba(255,252,235, 0)");
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.restore();
+    } catch { /* gradient 미지원 */ }
+
+    // work 갱신
+    wctx.clearRect(0, 0, vw, vh);
+    wctx.drawImage(preview, 0, 0);
+
+    // ── Pass 5: 피부 소프트닝 (페이스 오발 클립 + blur α0.38) ───────────
+    // α0.38 — 피부 결을 완전히 지우지 않고 매끄럽게만
     const OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
     try {
       ctx.save();
@@ -233,8 +256,8 @@ export function SipgaeApp() {
       for (let i = 1; i < OVAL.length; i++) ctx.lineTo(lx(OVAL[i]), ly(OVAL[i]));
       ctx.closePath();
       ctx.clip();
-      ctx.filter = "blur(0.15px)";
-      ctx.globalAlpha = 0.55;
+      ctx.filter = "blur(0.2px)";
+      ctx.globalAlpha = 0.38;
       ctx.drawImage(work, 0, 0);
       ctx.restore();
     } catch { /* ctx.filter 미지원 */ }
@@ -243,26 +266,26 @@ export function SipgaeApp() {
     wctx.clearRect(0, 0, vw, vh);
     wctx.drawImage(preview, 0, 0);
 
-    // ── Pass 6: 눈 선명도 강화 (iris 클립 + contrast(1.4)) ───────────────
-    // lms.length >= 478 → refineLandmarks iris 포인트 포함
+    // ── Pass 6: 눈 밝기 부스트 (brightness 1.18 — 맑고 빛나는 눈빛) ─────
+    // contrast 어둡힘 대신 brightness 밝힘 → 투명하고 생기 있는 눈
     if (lms.length >= 478) {
-      const iRx = lx(468); const iRy = ly(468); // 오른쪽 홍채 중심
-      const iLx = lx(473); const iLy = ly(473); // 왼쪽 홍채 중심
-      const eyeW = Math.abs(lx(33) - lx(133));
-      const eyeRad = eyeW * 0.55;
+      const iRx = lx(468); const iRy = ly(468);
+      const iLx = lx(473); const iLy = ly(473);
+      const eyeW   = Math.abs(lx(33) - lx(133));
+      const eyeRad = eyeW * 0.52;
       try {
-        const sharpEye = (ex: number, ey: number) => {
+        const brightenEye = (ex: number, ey: number) => {
           ctx.save();
           ctx.beginPath();
-          ctx.ellipse(ex, ey, eyeRad, eyeRad * 0.65, 0, 0, Math.PI * 2);
+          ctx.ellipse(ex, ey, eyeRad, eyeRad * 0.62, 0, 0, Math.PI * 2);
           ctx.clip();
-          ctx.filter = "contrast(1.4) brightness(0.98)";
-          ctx.globalAlpha = 0.32;
+          ctx.filter = "brightness(1.18) contrast(1.05)";
+          ctx.globalAlpha = 0.30;
           ctx.drawImage(work, 0, 0);
           ctx.restore();
         };
-        sharpEye(iRx, iRy);
-        sharpEye(iLx, iLy);
+        brightenEye(iRx, iRy);
+        brightenEye(iLx, iLy);
       } catch { /* ctx.filter 미지원 */ }
 
       // work 갱신
@@ -270,16 +293,16 @@ export function SipgaeApp() {
       wctx.drawImage(preview, 0, 0);
     }
 
-    // ── Pass 7: 턱선 슬림 (LM 152 앵커, CHIN_SLIM 0.97) ─────────────────
+    // ── Pass 7: 턱선 슬림 (LM152 앵커, 타원 클립 — 경계 자연스럽게) ──────
+    // rect 클립 대신 얼굴 하관 타원으로 seam line 제거
     {
-      const chinY = ly(152);
       const chinCx = lx(152);
-      if (chinY < vh) {
+      if (faceBotY > 0 && faceBotY < vh) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, chinY * 0.88, vw, vh);
+        ctx.ellipse(chinCx, faceBotY, faceW * 0.58, faceH * 0.38, 0, 0, Math.PI * 2);
         ctx.clip();
-        ctx.globalAlpha = 0.75;
+        ctx.globalAlpha = 0.65;
         ctx.translate(chinCx, 0);
         ctx.scale(CHIN_SLIM, 1);
         ctx.translate(-chinCx, 0);
@@ -292,42 +315,43 @@ export function SipgaeApp() {
       wctx.drawImage(preview, 0, 0);
     }
 
-    // ── Pass 8: 중안부 3% 세로 압축 (코끝 LM4 ~ 윗입술 LM13) ────────────
+    // ── Pass 8: 중안부 1.5% 세로 압축 (3% → 1.5%로 줄여 자연스럽게) ────
     {
       const noseTipY  = ly(4);
       const upperLipY = ly(13);
-      const midTop    = noseTipY - (upperLipY - noseTipY) * 0.5;
-      const midBot    = upperLipY + (upperLipY - noseTipY) * 0.2;
+      const midTop    = noseTipY - (upperLipY - noseTipY) * 0.4;
+      const midBot    = upperLipY + (upperLipY - noseTipY) * 0.15;
       const zH        = midBot - midTop;
-      const dstH      = zH * 0.97;
-      const shift     = zH * 0.03 * 0.5;
-      const faceW     = Math.abs(lx(323) - lx(93));
-      const midCx     = (lx(4) + lx(13)) / 2;
+      if (zH > 0) {
+        const dstH   = zH * 0.985;      // 1.5% 압축
+        const shift  = zH * 0.015 * 0.5;
+        const midCx  = faceCx;
 
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(midCx, (midTop + midBot) / 2, faceW * 0.35, zH * 0.6, 0, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.globalAlpha = 0.70;
-      ctx.drawImage(
-        work,
-        midCx - faceW * 0.35, midTop,         faceW * 0.70, zH,
-        midCx - faceW * 0.35, midTop - shift,  faceW * 0.70, dstH,
-      );
-      ctx.restore();
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(midCx, (midTop + midBot) / 2, faceW * 0.30, zH * 0.52, 0, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.globalAlpha = 0.58;
+        ctx.drawImage(
+          work,
+          midCx - faceW * 0.30, midTop,         faceW * 0.60, zH,
+          midCx - faceW * 0.30, midTop - shift,  faceW * 0.60, dstH,
+        );
+        ctx.restore();
 
-      // work 갱신
-      wctx.clearRect(0, 0, vw, vh);
-      wctx.drawImage(preview, 0, 0);
+        // work 갱신
+        wctx.clearRect(0, 0, vw, vh);
+        wctx.drawImage(preview, 0, 0);
+      }
     }
 
-    // ── Pass 9: 눈매 세로 0.3% 확장 (EYE_VERT_SCALE) ────────────────────
+    // ── Pass 9: 눈매 세로 0.2% 확장 ─────────────────────────────────────
     if (lms.length >= 478) {
       const iRx = lx(468); const iRy = ly(468);
       const iLx = lx(473); const iLy = ly(473);
-      const eyeW = Math.abs(lx(33) - lx(133));
-      const eyeRad = eyeW * 0.55;
-      const eyeH   = eyeRad * 0.65;
+      const eyeW   = Math.abs(lx(33) - lx(133));
+      const eyeRad = eyeW * 0.52;
+      const eyeH   = eyeRad * 0.62;
       const dstH   = eyeH * 2 * EYE_VERT_SCALE;
 
       const stretchEye = (ex: number, ey: number) => {
@@ -347,24 +371,33 @@ export function SipgaeApp() {
       stretchEye(iLx, iLy);
     }
 
-    // ── Pass 10: 캐치라이트 (10시 방향 α0.5) ─────────────────────────────
+    // ── Pass 10: 캐치라이트 (10시 주광 α0.45 + 4시 부광 α0.15) ─────────
+    // 두 개의 반사광 = 자연스러운 스튜디오 조명 느낌
     if (lms.length >= 478) {
       const iRx = lx(468); const iRy = ly(468);
       const iLx = lx(473); const iLy = ly(473);
       const eyeW       = Math.abs(lx(33) - lx(133));
       const irisRadius = eyeW * 0.18;
-      const clR        = Math.max(1.5, irisRadius * 0.22);
-      // 10시 방향: 시계 12시(-90°) 기준 -60° = x축 기준 -150°
-      const clAngle = (-150 * Math.PI) / 180;
-      const clOffX  = Math.cos(clAngle) * irisRadius * 0.55;
-      const clOffY  = Math.sin(clAngle) * irisRadius * 0.55;
+      const clR1       = Math.max(1.5, irisRadius * 0.24);
+      const clR2       = Math.max(1.0, irisRadius * 0.12);
+      // 10시: x축 -150°, 4시: x축 -30°
+      const a1 = (-150 * Math.PI) / 180;
+      const a2 = ( -30 * Math.PI) / 180;
+      const ox1 = Math.cos(a1) * irisRadius * 0.52;
+      const oy1 = Math.sin(a1) * irisRadius * 0.52;
+      const ox2 = Math.cos(a2) * irisRadius * 0.50;
+      const oy2 = Math.sin(a2) * irisRadius * 0.50;
 
       const drawCatchlight = (ex: number, ey: number) => {
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(ex + clOffX, ey + clOffY, clR, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
-        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.arc(ex + ox1, ey + oy1, clR1, 0, Math.PI * 2);
+        ctx.globalAlpha = 0.45;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(ex + ox2, ey + oy2, clR2, 0, Math.PI * 2);
+        ctx.globalAlpha = 0.15;
         ctx.fill();
         ctx.restore();
       };
