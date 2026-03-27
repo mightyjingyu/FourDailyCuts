@@ -8,8 +8,28 @@ import { WebGLBeautyRenderer } from "./WebGLBeautyRenderer";
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
-// Face Mesh landmark lerp smoothing factor
+// Face Mesh landmark lerp smoothing factor (WebGL pipeline)
 const LERP_S = 0.12;
+const SMOOTHING_LERP = 0.15;
+const HIGHKEY_FILTER = "none";
+const SHADOW_LIFT_ALPHA = 0;
+const WHITE_OVERLAY_COLOR = "#f0f8ff";
+const WHITE_OVERLAY_ALPHA = 0;
+const JAW_SLIM_STRENGTH = 0.03;
+const EYE_VERTICAL_STRETCH = 1.006;
+const MIDFACE_COMPRESS = 0.97;
+const SKIN_SMOOTH_BLUR_PX = 0.22;
+const SKIN_SMOOTH_ALPHA = 0.12;
+const EDGE_SHARPEN_CONTRAST = 1.14;
+const CATCHLIGHT_ALPHA = 0;
+const ENABLE_EYE_STRETCH = false;
+const ENABLE_EYE_SHARPEN = false;
+const ENABLE_CATCHLIGHT = false;
+const ENABLE_JAW_SLIM = false;
+const ENABLE_MIDFACE_COMPRESS = false;
+const ENABLE_SKIN_SMOOTH = false;
+// 진단용: true면 캔버스 렌더를 끄고 원본 비디오를 직접 표시
+const DIAGNOSTIC_RAW_VIDEO_PREVIEW = true;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
@@ -30,6 +50,24 @@ const THEME_OPTIONS: { id: FrameTheme; label: string; hint: string }[] = [
 
 const BASIC_THEME_IDS: FrameTheme[] = ["basicBlack", "basicWhite"];
 const DAILY_EDITION_THEME_IDS: FrameTheme[] = ["dailyEditionDropout", "dailyEditionHomeGo"];
+
+type Point = { x: number; y: number };
+type FallbackFaceData = {
+  bbox: { cx: number; cy: number; w: number; h: number };
+  eyes: [Point, Point];
+  nose: Point | null;
+  mouth: Point | null;
+};
+
+const FACE_OVAL_INDICES = [
+  10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152,
+  148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
+] as const;
+const LEFT_EYE_RING = [33, 160, 158, 133, 153, 144] as const;
+const RIGHT_EYE_RING = [362, 385, 387, 263, 373, 380] as const;
+const BROW_NOSE_INDICES = [70, 63, 105, 66, 107, 300, 293, 334, 296, 336, 168, 6, 197, 195, 4] as const;
+const JAW_LEFT_INDICES = [234, 172, 136, 150, 149, 176] as const;
+const JAW_RIGHT_INDICES = [454, 397, 365, 379, 378, 400] as const;
 
 export function SipgaeApp() {
   const [step, setStep] = useState<Step>("home");
@@ -60,13 +98,24 @@ export function SipgaeApp() {
   const frameRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const renderRafRef = useRef<number | null>(null);
-  const rendererRef  = useRef<WebGLBeautyRenderer | null>(null);
+  const rendererRef = useRef<WebGLBeautyRenderer | null>(null);
   // MediaPipe Face Mesh — 468+10 iris 랜드마크
-  const faceMeshRef       = useRef<unknown>(null);
-  const faceMeshReadyRef  = useRef(false);
+  const faceMeshRef = useRef<unknown>(null);
+  const faceMeshReadyRef = useRef(false);
   const faceMeshRunningRef = useRef(false);
   const lastFaceMeshMsRef = useRef(0);
-  const landmarksRef      = useRef<{ x: number; y: number; z: number }[] | null>(null);
+  const landmarksRef = useRef<{ x: number; y: number; z: number }[] | null>(null);
+  const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mpReadyRef = useRef(false);
+  const mpFailedRef = useRef(false);
+  const mpBusyRef = useRef(false);
+  const lastMpMsRef = useRef(0);
+  const mpLandmarksRef = useRef<Point[] | null>(null);
+  const mpLandmarksSmoothRef = useRef<Point[] | null>(null);
+  // fallback: FaceDetector
+  const faceDetRef = useRef<unknown>(null);
+  const lastDetectMsRef = useRef(0);
+  const faceDataRef = useRef<FallbackFaceData | null>(null);
 
   const getCenterCropRect = useCallback((srcW: number, srcH: number, targetAspect: number) => {
     const srcAspect = srcW / srcH;
@@ -87,6 +136,93 @@ export function SipgaeApp() {
       sh: cropH,
     };
   }, []);
+
+  const smoothPoints = useCallback((next: Point[], prev: Point[] | null, s: number) => {
+    if (!prev || prev.length !== next.length) return next;
+    return next.map((p, i) => ({
+      x: prev[i].x * (1 - s) + p.x * s,
+      y: prev[i].y * (1 - s) + p.y * s,
+    }));
+  }, []);
+
+  const drawPolygonMask = useCallback((ctx: CanvasRenderingContext2D, points: Point[], indices: readonly number[]) => {
+    if (!indices.length) return;
+    const first = points[indices[0]];
+    if (!first) return;
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    for (let i = 1; i < indices.length; i += 1) {
+      const p = points[indices[i]];
+      if (!p) continue;
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+  }, []);
+
+  const getFallbackFaceData = useCallback(
+    async (video: HTMLVideoElement, vw: number): Promise<FallbackFaceData | null> => {
+      const now = Date.now();
+      if (now - lastDetectMsRef.current <= 120 || !("FaceDetector" in window)) return faceDataRef.current;
+      lastDetectMsRef.current = now;
+      try {
+        if (!faceDetRef.current) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          faceDetRef.current = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const faces = await (faceDetRef.current as any).detect(video);
+        if (!faces.length) {
+          faceDataRef.current = null;
+          return null;
+        }
+        const face = faces[0];
+        const bb = face.boundingBox;
+        const mx = (x: number) => vw - x;
+        const bbox = { cx: mx(bb.x + bb.width / 2), cy: bb.y + bb.height / 2, w: bb.width, h: bb.height };
+        type Lm = { type: string; locations: { x: number; y: number }[] };
+        const lms: Lm[] = face.landmarks ?? [];
+        const eyeLms = lms.filter((l) => l.type === "eye");
+        const noseLm = lms.find((l) => l.type === "nose");
+        const mouthLm = lms.find((l) => l.type === "mouth");
+        const eyes: [Point, Point] =
+          eyeLms.length >= 2
+            ? [
+                { x: mx(eyeLms[0].locations[0].x), y: eyeLms[0].locations[0].y },
+                { x: mx(eyeLms[1].locations[0].x), y: eyeLms[1].locations[0].y },
+              ]
+            : [
+                { x: mx(bb.x + bb.width * 0.28), y: bb.y + bb.height * 0.36 },
+                { x: mx(bb.x + bb.width * 0.72), y: bb.y + bb.height * 0.36 },
+              ];
+        const nose = noseLm ? { x: mx(noseLm.locations[0].x), y: noseLm.locations[0].y } : null;
+        const mouth = mouthLm ? { x: mx(mouthLm.locations[0].x), y: mouthLm.locations[0].y } : null;
+        const prev = faceDataRef.current;
+        const lerp = (a: number, b: number) => (prev ? a * (1 - SMOOTHING_LERP) + b * SMOOTHING_LERP : b);
+        faceDataRef.current = {
+          bbox: {
+            cx: lerp(prev?.bbox.cx ?? bbox.cx, bbox.cx),
+            cy: lerp(prev?.bbox.cy ?? bbox.cy, bbox.cy),
+            w: lerp(prev?.bbox.w ?? bbox.w, bbox.w),
+            h: lerp(prev?.bbox.h ?? bbox.h, bbox.h),
+          },
+          eyes: [
+            { x: lerp(prev?.eyes[0].x ?? eyes[0].x, eyes[0].x), y: lerp(prev?.eyes[0].y ?? eyes[0].y, eyes[0].y) },
+            { x: lerp(prev?.eyes[1].x ?? eyes[1].x, eyes[1].x), y: lerp(prev?.eyes[1].y ?? eyes[1].y, eyes[1].y) },
+          ],
+          nose: nose
+            ? { x: lerp(prev?.nose?.x ?? nose.x, nose.x), y: lerp(prev?.nose?.y ?? nose.y, nose.y) }
+            : null,
+          mouth: mouth
+            ? { x: lerp(prev?.mouth?.x ?? mouth.x, mouth.x), y: lerp(prev?.mouth?.y ?? mouth.y, mouth.y) }
+            : null,
+        };
+      } catch {
+        mpFailedRef.current = true;
+      }
+      return faceDataRef.current;
+    },
+    []
+  );
 
   const captureFromVideo = useCallback(() => {
     const preview = previewCanvasRef.current;
@@ -123,6 +259,7 @@ export function SipgaeApp() {
     const { sx, sy, sw, sh } = getCenterCropRect(w, h, aspect);
     // Fallback: mirror only (WebGL LUT not available at this point)
     ctx.save();
+    ctx.filter = HIGHKEY_FILTER;
     ctx.translate(c.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
@@ -130,28 +267,308 @@ export function SipgaeApp() {
     return c.toDataURL("image/jpeg", 0.95);
   }, [getCenterCropRect, theme]);
 
-  const drawBeautyWarpFrame = useCallback(() => {
+  const drawBeautyWarpFrame = useCallback(async () => {
     const video = videoRef.current;
     if (!video || video.readyState < 2) return;
 
-    // ── Face Mesh 비동기 갱신 (80 ms 쓰로틀) ─────────────────────────────
-    const now = Date.now();
-    if (
-      faceMeshReadyRef.current &&
-      !faceMeshRunningRef.current &&
-      now - lastFaceMeshMsRef.current > 80
-    ) {
-      lastFaceMeshMsRef.current = now;
-      faceMeshRunningRef.current = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (faceMeshRef.current as any).send({ image: video }).finally(() => {
-        faceMeshRunningRef.current = false;
-      });
+    const preview = previewCanvasRef.current;
+    if (!preview) return;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    if (preview.width !== vw || preview.height !== vh) {
+      preview.width = vw;
+      preview.height = vh;
     }
 
-    // ── WebGL 렌더 (LUT + 피부 소프트닝, 전부 GPU) ────────────────────────
-    rendererRef.current?.render(video, landmarksRef.current);
-  }, []);
+    let work = workCanvasRef.current;
+    if (!work) {
+      work = document.createElement("canvas");
+      workCanvasRef.current = work;
+    }
+    if (work.width !== vw || work.height !== vh) {
+      work.width = vw;
+      work.height = vh;
+    }
+
+    const ctx = preview.getContext("2d");
+    const wctx = work.getContext("2d");
+    if (!ctx || !wctx) return;
+
+    // Base pass: mirror + highkey
+    wctx.clearRect(0, 0, vw, vh);
+    wctx.save();
+    wctx.filter = HIGHKEY_FILTER;
+    wctx.translate(vw, 0);
+    wctx.scale(-1, 1);
+    wctx.drawImage(video, 0, 0, vw, vh);
+    wctx.restore();
+    ctx.clearRect(0, 0, vw, vh);
+    ctx.drawImage(work, 0, 0);
+
+    // Tone pass: shadow lift + white overlay
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = SHADOW_LIFT_ALPHA;
+    ctx.fillStyle = WHITE_OVERLAY_COLOR;
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.restore();
+    ctx.save();
+    ctx.globalCompositeOperation = "soft-light";
+    ctx.globalAlpha = WHITE_OVERLAY_ALPHA;
+    ctx.fillStyle = WHITE_OVERLAY_COLOR;
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.restore();
+
+    // Run MediaPipe at low frequency
+    if (mpReadyRef.current && !mpFailedRef.current && !mpBusyRef.current && Date.now() - lastMpMsRef.current > 70) {
+      mpBusyRef.current = true;
+      lastMpMsRef.current = Date.now();
+      try {
+        const mesh = faceMeshRef.current as { send?: (input: { image: HTMLVideoElement }) => Promise<void> } | null;
+        if (mesh?.send) {
+          await mesh.send({ image: video });
+        }
+      } catch {
+        mpFailedRef.current = true;
+      } finally {
+        mpBusyRef.current = false;
+      }
+    }
+
+    const lm = mpLandmarksSmoothRef.current;
+    if (ENABLE_SKIN_SMOOTH && lm && lm.length >= 468) {
+      // Geometry pass: jaw line refine
+      wctx.clearRect(0, 0, vw, vh);
+      wctx.drawImage(preview, 0, 0);
+      const chin = lm[152];
+      if (chin && ENABLE_JAW_SLIM) {
+        const pullOne = (p: Point, dir: -1 | 1) => {
+          const r = Math.max(6, vw * 0.02);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.globalAlpha = 0.26;
+          const dx = Math.abs(p.x - chin.x) * JAW_SLIM_STRENGTH * dir;
+          ctx.drawImage(work, p.x - r, p.y - r, r * 2, r * 2, p.x - r - dx, p.y - r, r * 2, r * 2);
+          ctx.restore();
+        };
+        JAW_LEFT_INDICES.forEach((idx) => {
+          const p = lm[idx];
+          if (p) pullOne(p, 1);
+        });
+        JAW_RIGHT_INDICES.forEach((idx) => {
+          const p = lm[idx];
+          if (p) pullOne(p, -1);
+        });
+      }
+
+      // Geometry pass: eye vertical micro stretch
+      wctx.clearRect(0, 0, vw, vh);
+      wctx.drawImage(preview, 0, 0);
+      const stretchEye = (ring: readonly number[]) => {
+        const pts = ring.map((idx) => lm[idx]).filter(Boolean) as Point[];
+        if (!pts.length) return;
+        const cx = pts.reduce((acc, p) => acc + p.x, 0) / pts.length;
+        const cy = pts.reduce((acc, p) => acc + p.y, 0) / pts.length;
+        const radius = Math.max(10, Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) * 1.25);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.translate(cx, cy);
+        ctx.scale(1, EYE_VERTICAL_STRETCH);
+        ctx.translate(-cx, -cy);
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(work, cx - radius, cy - radius, radius * 2, radius * 2, cx - radius, cy - radius, radius * 2, radius * 2);
+        ctx.restore();
+      };
+      if (ENABLE_EYE_STRETCH) {
+        stretchEye(LEFT_EYE_RING);
+        stretchEye(RIGHT_EYE_RING);
+      }
+
+      // Geometry pass: mid-face compression
+      const noseTip = lm[1];
+      const upperLip = lm[13];
+      if (noseTip && upperLip && ENABLE_MIDFACE_COMPRESS) {
+        wctx.clearRect(0, 0, vw, vh);
+        wctx.drawImage(preview, 0, 0);
+        const cx = (noseTip.x + upperLip.x) * 0.5;
+        const cy = (noseTip.y + upperLip.y) * 0.5;
+        const faceW = Math.abs(lm[454].x - lm[234].x);
+        const zoneW = faceW * 0.3;
+        const zoneH = Math.max(12, Math.abs(upperLip.y - noseTip.y) * 3.2);
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, zoneW, zoneH, 0, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.globalAlpha = 0.7;
+        ctx.drawImage(work, cx - zoneW, cy - zoneH, zoneW * 2, zoneH * 2, cx - zoneW, cy - zoneH * MIDFACE_COMPRESS, zoneW * 2, zoneH * 2 * MIDFACE_COMPRESS);
+        ctx.restore();
+      }
+
+      // Texture pass: skin-only micro smoothing
+      wctx.clearRect(0, 0, vw, vh);
+      wctx.drawImage(preview, 0, 0);
+      ctx.save();
+      drawPolygonMask(ctx, lm, FACE_OVAL_INDICES);
+      ctx.clip();
+      ctx.filter = `blur(${SKIN_SMOOTH_BLUR_PX}px)`;
+      ctx.globalAlpha = SKIN_SMOOTH_ALPHA;
+      ctx.drawImage(work, 0, 0, vw, vh);
+      ctx.restore();
+      // Preserve eye texture by restoring original eye neighborhoods.
+      const restoreEyePatch = (ring: readonly number[]) => {
+        const pts = ring.map((idx) => lm[idx]).filter(Boolean) as Point[];
+        if (!pts.length) return;
+        const cx = pts.reduce((acc, p) => acc + p.x, 0) / pts.length;
+        const cy = pts.reduce((acc, p) => acc + p.y, 0) / pts.length;
+        const radius = Math.max(12, Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) * 1.55);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.globalAlpha = 1;
+        ctx.drawImage(work, cx - radius, cy - radius, radius * 2, radius * 2, cx - radius, cy - radius, radius * 2, radius * 2);
+        ctx.restore();
+      };
+      restoreEyePatch(LEFT_EYE_RING);
+      restoreEyePatch(RIGHT_EYE_RING);
+
+      // Texture pass: eyes/brows/nose edge sharpen
+      wctx.clearRect(0, 0, vw, vh);
+      wctx.drawImage(preview, 0, 0);
+      const sharpenLocal = (p: Point, radius: number, alpha = 0.25) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.filter = `contrast(${EDGE_SHARPEN_CONTRAST})`;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(work, p.x - radius, p.y - radius, radius * 2, radius * 2, p.x - radius, p.y - radius, radius * 2, radius * 2);
+        ctx.restore();
+      };
+      if (ENABLE_EYE_SHARPEN) {
+        [33, 133, 362, 263].forEach((idx) => {
+          const p = lm[idx];
+          if (p) sharpenLocal(p, Math.max(6, vw * 0.009), 0.1);
+        });
+        BROW_NOSE_INDICES.forEach((idx) => {
+          const p = lm[idx];
+          if (p) sharpenLocal(p, Math.max(6, vw * 0.009), 0.12);
+        });
+      }
+
+      // Finish pass: catchlight (iris indices 468-477 if available)
+      const drawCatchlight = (p: Point) => {
+        if (CATCHLIGHT_ALPHA <= 0 || !ENABLE_CATCHLIGHT) return;
+        const r = Math.max(0.8, vw * 0.0016);
+        ctx.save();
+        ctx.fillStyle = "#ffffff";
+        ctx.globalAlpha = CATCHLIGHT_ALPHA;
+        ctx.beginPath();
+        ctx.arc(p.x - r * 1.15, p.y - r * 1.55, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      };
+      if (lm.length >= 478) {
+        const leftIris = lm.slice(468, 473);
+        const rightIris = lm.slice(473, 478);
+        const center = (iris: Point[]) => ({
+          x: iris.reduce((acc, p) => acc + p.x, 0) / iris.length,
+          y: iris.reduce((acc, p) => acc + p.y, 0) / iris.length,
+        });
+        drawCatchlight(center(leftIris));
+        drawCatchlight(center(rightIris));
+      }
+      return;
+    }
+
+    // fallback path: FaceDetector minimal touch-up
+    const fallback = await getFallbackFaceData(video, vw);
+    if (!fallback) return;
+    wctx.clearRect(0, 0, vw, vh);
+    wctx.drawImage(preview, 0, 0);
+    const eyeR = fallback.bbox.w * 0.08;
+    const drawFallbackCatchlight = (ex: number, ey: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ex - eyeR * 0.2, ey - eyeR * 0.2, Math.max(1.4, eyeR * 0.12), 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.globalAlpha = CATCHLIGHT_ALPHA;
+      ctx.fill();
+      ctx.restore();
+    };
+    drawFallbackCatchlight(fallback.eyes[0].x, fallback.eyes[0].y);
+    drawFallbackCatchlight(fallback.eyes[1].x, fallback.eyes[1].y);
+  }, [drawPolygonMask, getFallbackFaceData]);
+
+  useEffect(() => {
+    if (step !== "shoot") {
+      mpReadyRef.current = false;
+      mpBusyRef.current = false;
+      mpLandmarksRef.current = null;
+      mpLandmarksSmoothRef.current = null;
+      if (faceMeshRef.current && typeof (faceMeshRef.current as { close?: () => void }).close === "function") {
+        (faceMeshRef.current as { close: () => void }).close();
+      }
+      faceMeshRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    mpFailedRef.current = false;
+    (async () => {
+      try {
+        const { FaceMesh } = await import("@mediapipe/face_mesh");
+        const mesh = new FaceMesh({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+        });
+        mesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.6,
+          minTrackingConfidence: 0.6,
+        });
+        mesh.onResults((results: { multiFaceLandmarks?: { x: number; y: number }[][] }) => {
+          if (cancelled) return;
+          const raw = results.multiFaceLandmarks?.[0];
+          if (!raw?.length) {
+            mpLandmarksRef.current = null;
+            mpLandmarksSmoothRef.current = null;
+            return;
+          }
+          const mirrored = raw.map((p) => ({ x: (1 - p.x) * (videoRef.current?.videoWidth ?? 1), y: p.y * (videoRef.current?.videoHeight ?? 1) }));
+          mpLandmarksRef.current = mirrored;
+          mpLandmarksSmoothRef.current = smoothPoints(mirrored, mpLandmarksSmoothRef.current, SMOOTHING_LERP);
+        });
+        if (cancelled) {
+          mesh.close();
+          return;
+        }
+        faceMeshRef.current = mesh;
+        mpReadyRef.current = true;
+      } catch {
+        mpFailedRef.current = true;
+        mpReadyRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      mpReadyRef.current = false;
+      mpBusyRef.current = false;
+      mpLandmarksRef.current = null;
+      mpLandmarksSmoothRef.current = null;
+      if (faceMeshRef.current && typeof (faceMeshRef.current as { close?: () => void }).close === "function") {
+        (faceMeshRef.current as { close: () => void }).close();
+      }
+      faceMeshRef.current = null;
+    };
+  }, [smoothPoints, step]);
 
   useEffect(() => {
     if (step !== "shoot") {
@@ -187,10 +604,11 @@ export function SipgaeApp() {
 
   useEffect(() => {
     if (step !== "shoot") return;
+    if (DIAGNOSTIC_RAW_VIDEO_PREVIEW) return;
     let stopped = false;
     const loop = () => {
       if (stopped) return;
-      drawBeautyWarpFrame();
+      void drawBeautyWarpFrame();
       renderRafRef.current = window.requestAnimationFrame(loop);
     };
     renderRafRef.current = window.requestAnimationFrame(loop);
@@ -832,12 +1250,26 @@ export function SipgaeApp() {
               autoPlay
               playsInline
               muted
-              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+              style={
+                DIAGNOSTIC_RAW_VIDEO_PREVIEW
+                  ? {
+                      width: "100vw",
+                      height: "100vh",
+                      objectFit: "cover",
+                      transform: "scaleX(-1)",
+                      filter: "none",
+                    }
+                  : { position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }
+              }
             />
             <canvas
               ref={previewCanvasRef}
               className="shoot-canvas"
-              style={{ width: "100vw", height: "100vh" }}
+              style={
+                DIAGNOSTIC_RAW_VIDEO_PREVIEW
+                  ? { display: "none" }
+                  : { width: "100vw", height: "100vh" }
+              }
             />
             <canvas ref={canvasRef} style={{ display: "none" }} />
             <div

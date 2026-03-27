@@ -1,5 +1,7 @@
-import { SipgaeAppLoader } from "@/components/SipgaeAppLoader";
+"use client";
+
+import SipgaeApp from "@/components/SipgaeApp";
 
 export default function Home() {
-  return <SipgaeAppLoader />;
+  return <SipgaeApp />;
 }
