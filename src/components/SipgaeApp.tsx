@@ -622,13 +622,14 @@ export function SipgaeApp() {
   }, [step, drawBeautyWarpFrame]);
 
   // ── WebGL 렌더러 초기화 ────────────────────────────────────────────────
+  // previewCanvasRef는 2D 컨텍스트(drawBeautyWarpFrame)가 사용하므로,
+  // WebGL 렌더러는 별도 오프스크린 캔버스에 초기화해야 충돌을 방지.
   useEffect(() => {
     if (step !== "shoot") return;
-    const canvas = previewCanvasRef.current;
-    if (!canvas) return;
+    const offscreen = document.createElement("canvas");
     let renderer: WebGLBeautyRenderer;
     try {
-      renderer = new WebGLBeautyRenderer(canvas);
+      renderer = new WebGLBeautyRenderer(offscreen);
       rendererRef.current = renderer;
     } catch (e) {
       console.warn("[WebGL] init failed, beauty filter disabled:", e);
