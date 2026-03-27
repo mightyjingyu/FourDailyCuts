@@ -29,7 +29,7 @@ const ENABLE_JAW_SLIM = false;
 const ENABLE_MIDFACE_COMPRESS = false;
 const ENABLE_SKIN_SMOOTH = false;
 // 진단용: true면 캔버스 렌더를 끄고 원본 비디오를 직접 표시
-const DIAGNOSTIC_RAW_VIDEO_PREVIEW = true;
+const DIAGNOSTIC_RAW_VIDEO_PREVIEW = false;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
