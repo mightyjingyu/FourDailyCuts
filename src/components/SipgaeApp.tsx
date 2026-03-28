@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FloatingBackground } from "./FloatingBackground";
-import { BASIC_FRAME_SLOT_ASPECT, PhotoFrame, type FrameTheme } from "./PhotoFrame";
+import { BASIC_FRAME_SLOT_ASPECT, MUNGG_FRAME_SLOT_ASPECT, PhotoFrame, type FrameTheme } from "./PhotoFrame";
 import { WebGLBeautyRenderer } from "./WebGLBeautyRenderer";
 
 type Step = "home" | "select" | "loading" | "shoot" | "done";
@@ -11,27 +11,28 @@ const EMPTY: (string | null)[] = [null, null, null, null];
 // Face Mesh landmark lerp smoothing factor (WebGL pipeline)
 const LERP_S = 0.12;
 const SMOOTHING_LERP = 0.15;
-const HIGHKEY_FILTER = "none";
-const SHADOW_LIFT_ALPHA = 0;
+const HIGHKEY_FILTER = "brightness(1.18) contrast(1.12) saturate(1.06)";
+const SHADOW_LIFT_ALPHA = 0.06;
 const WHITE_OVERLAY_COLOR = "#f0f8ff";
-const WHITE_OVERLAY_ALPHA = 0;
-const JAW_SLIM_STRENGTH = 0.03;
-const EYE_VERTICAL_STRETCH = 1.006;
+const WHITE_OVERLAY_ALPHA = 0.05;
+const JAW_SLIM_STRENGTH = 0.04;
+const EYE_VERTICAL_STRETCH = 1.008;
 const MIDFACE_COMPRESS = 0.97;
-const SKIN_SMOOTH_BLUR_PX = 0.22;
-const SKIN_SMOOTH_ALPHA = 0.12;
-const EDGE_SHARPEN_CONTRAST = 1.14;
+const SKIN_SMOOTH_BLUR_PX = 1.6;
+const SKIN_SMOOTH_ALPHA = 0.38;
+const EDGE_SHARPEN_CONTRAST = 1.18;
 const CATCHLIGHT_ALPHA = 0;
-const ENABLE_EYE_STRETCH = false;
-const ENABLE_EYE_SHARPEN = false;
+const ENABLE_EYE_STRETCH = true;
+const ENABLE_EYE_SHARPEN = true;
 const ENABLE_CATCHLIGHT = false;
-const ENABLE_JAW_SLIM = false;
+const ENABLE_JAW_SLIM = true;
 const ENABLE_MIDFACE_COMPRESS = false;
-const ENABLE_SKIN_SMOOTH = false;
+const ENABLE_SKIN_SMOOTH = true;
 // 진단용: true면 캔버스 렌더를 끄고 원본 비디오를 직접 표시
 const DIAGNOSTIC_RAW_VIDEO_PREVIEW = false;
-/** 줌아웃 비율: 1.0 = 원본, 0.82 = 18% 축소(더 넓게 보임) */
-const PREVIEW_ZOOM_SCALE = 0.82;
+/** 줌아웃 비율: 모바일 0.70, 데스크톱 0.92 */
+const MOBILE_ZOOM_SCALE = 0.70;
+const DESKTOP_ZOOM_SCALE = 0.92;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
@@ -118,6 +119,7 @@ export function SipgaeApp() {
   const faceDetRef = useRef<unknown>(null);
   const lastDetectMsRef = useRef(0);
   const faceDataRef = useRef<FallbackFaceData | null>(null);
+  const isMobileRef = useRef(false);
 
   const getCenterCropRect = useCallback((srcW: number, srcH: number, targetAspect: number) => {
     const srcAspect = srcW / srcH;
@@ -233,8 +235,13 @@ export function SipgaeApp() {
     if (!c) return null;
 
     const useBasicSlotAspect = theme === "basicBlack" || theme === "basicWhite";
-    const aspect = useBasicSlotAspect ? BASIC_FRAME_SLOT_ASPECT : SLOT_ASPECT;
-    const capW = useBasicSlotAspect ? Math.round(CAPTURE_HEIGHT * aspect) : CAPTURE_WIDTH;
+    const isDailyEdition = theme === "dailyEditionDropout" || theme === "dailyEditionHomeGo";
+    const aspect = useBasicSlotAspect
+      ? BASIC_FRAME_SLOT_ASPECT
+      : isDailyEdition
+        ? MUNGG_FRAME_SLOT_ASPECT
+        : SLOT_ASPECT;
+    const capW = Math.round(CAPTURE_HEIGHT * aspect);
     const capH = CAPTURE_HEIGHT;
 
     // Primary source: processed preview canvas (mirror + beauty + reshape).
@@ -315,7 +322,7 @@ export function SipgaeApp() {
     if (!ctx || !wctx) return;
 
     // Zoom-out: draw video scaled down, centered (black padding around)
-    const Z = PREVIEW_ZOOM_SCALE;
+    const Z = isMobileRef.current ? MOBILE_ZOOM_SCALE : DESKTOP_ZOOM_SCALE;
     const dW = Math.round(pw * Z);
     const dH = Math.round(ph * Z);
     const dOffX = Math.round((pw - dW) / 2);
@@ -536,6 +543,11 @@ export function SipgaeApp() {
     drawFallbackCatchlight(fallback.eyes[0].x - cropSx, fallback.eyes[0].y - cropSy);
     drawFallbackCatchlight(fallback.eyes[1].x - cropSx, fallback.eyes[1].y - cropSy);
   }, [drawPolygonMask, getFallbackFaceData]);
+
+  useEffect(() => {
+    isMobileRef.current =
+      /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+  }, []);
 
   useEffect(() => {
     if (step !== "shoot") {

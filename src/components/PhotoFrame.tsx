@@ -17,6 +17,8 @@ const MUNGG_SLOTS_PX = [
   { x: 30, y: 1849, w: 940, h: 580 },
 ] as const;
 
+/** 멍개·일상에디션 슬롯 비율 (940×580) */
+export const MUNGG_FRAME_SLOT_ASPECT = MUNGG_SLOTS_PX[0].w / MUNGG_SLOTS_PX[0].h;
 /** 기본 프레임(블랙·화이트) — 피그마 1000×3000 기준 사진칸(각 879×567, x=60) */
 export const BASIC_FRAME_SLOT_PX = { w: 879, h: 567 } as const;
 export const BASIC_FRAME_SLOT_ASPECT = BASIC_FRAME_SLOT_PX.w / BASIC_FRAME_SLOT_PX.h;
