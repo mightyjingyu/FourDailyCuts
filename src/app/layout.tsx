@@ -23,7 +23,7 @@ const speechCute = Gaegu({
 });
 
 export const metadata: Metadata = {
-  title: "싶개 SIPGAE",
+  title: "일상네컷 Daily Four Cuts",
   description: "당신의 일상을 담고 싶개",
 };
 
