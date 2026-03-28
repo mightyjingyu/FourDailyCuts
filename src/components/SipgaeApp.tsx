@@ -277,9 +277,25 @@ export function SipgaeApp() {
     const vh = video.videoHeight;
     if (!vw || !vh) return;
 
-    if (preview.width !== vw || preview.height !== vh) {
-      preview.width = vw;
-      preview.height = vh;
+    // Always render in landscape (4:3) — crop center of portrait video
+    let cropSx = 0, cropSy = 0, cropSw = vw, cropSh = vh;
+    let pw = vw, ph = vh;
+    const videoAspect = vw / vh;
+    if (videoAspect < SLOT_ASPECT) {
+      // Portrait or narrower than 4:3: crop height
+      cropSh = Math.round(vw / SLOT_ASPECT);
+      cropSy = Math.round((vh - cropSh) / 2);
+      ph = cropSh;
+    } else if (videoAspect > SLOT_ASPECT) {
+      // Wider than 4:3: crop sides
+      cropSw = Math.round(vh * SLOT_ASPECT);
+      cropSx = Math.round((vw - cropSw) / 2);
+      pw = cropSw;
+    }
+
+    if (preview.width !== pw || preview.height !== ph) {
+      preview.width = pw;
+      preview.height = ph;
     }
 
     let work = workCanvasRef.current;
@@ -287,24 +303,24 @@ export function SipgaeApp() {
       work = document.createElement("canvas");
       workCanvasRef.current = work;
     }
-    if (work.width !== vw || work.height !== vh) {
-      work.width = vw;
-      work.height = vh;
+    if (work.width !== pw || work.height !== ph) {
+      work.width = pw;
+      work.height = ph;
     }
 
     const ctx = preview.getContext("2d");
     const wctx = work.getContext("2d");
     if (!ctx || !wctx) return;
 
-    // Base pass: mirror + highkey
-    wctx.clearRect(0, 0, vw, vh);
+    // Base pass: mirror + highkey (with landscape crop)
+    wctx.clearRect(0, 0, pw, ph);
     wctx.save();
     wctx.filter = HIGHKEY_FILTER;
-    wctx.translate(vw, 0);
+    wctx.translate(pw, 0);
     wctx.scale(-1, 1);
-    wctx.drawImage(video, 0, 0, vw, vh);
+    wctx.drawImage(video, cropSx, cropSy, cropSw, cropSh, 0, 0, pw, ph);
     wctx.restore();
-    ctx.clearRect(0, 0, vw, vh);
+    ctx.clearRect(0, 0, pw, ph);
     ctx.drawImage(work, 0, 0);
 
     // Tone pass: shadow lift + white overlay
@@ -312,13 +328,13 @@ export function SipgaeApp() {
     ctx.globalCompositeOperation = "screen";
     ctx.globalAlpha = SHADOW_LIFT_ALPHA;
     ctx.fillStyle = WHITE_OVERLAY_COLOR;
-    ctx.fillRect(0, 0, vw, vh);
+    ctx.fillRect(0, 0, pw, ph);
     ctx.restore();
     ctx.save();
     ctx.globalCompositeOperation = "soft-light";
     ctx.globalAlpha = WHITE_OVERLAY_ALPHA;
     ctx.fillStyle = WHITE_OVERLAY_COLOR;
-    ctx.fillRect(0, 0, vw, vh);
+    ctx.fillRect(0, 0, pw, ph);
     ctx.restore();
 
     // Run MediaPipe at low frequency
@@ -339,13 +355,18 @@ export function SipgaeApp() {
 
     const lm = mpLandmarksSmoothRef.current;
     if (ENABLE_SKIN_SMOOTH && lm && lm.length >= 468) {
+      // Adjust landmarks to canvas coordinate space (offset by crop)
+      const adjLm = (cropSx === 0 && cropSy === 0)
+        ? lm
+        : lm.map((p) => ({ x: p.x - cropSx, y: p.y - cropSy }));
+
       // Geometry pass: jaw line refine
-      wctx.clearRect(0, 0, vw, vh);
+      wctx.clearRect(0, 0, pw, ph);
       wctx.drawImage(preview, 0, 0);
-      const chin = lm[152];
+      const chin = adjLm[152];
       if (chin && ENABLE_JAW_SLIM) {
         const pullOne = (p: Point, dir: -1 | 1) => {
-          const r = Math.max(6, vw * 0.02);
+          const r = Math.max(6, pw * 0.02);
           ctx.save();
           ctx.beginPath();
           ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
@@ -356,20 +377,20 @@ export function SipgaeApp() {
           ctx.restore();
         };
         JAW_LEFT_INDICES.forEach((idx) => {
-          const p = lm[idx];
+          const p = adjLm[idx];
           if (p) pullOne(p, 1);
         });
         JAW_RIGHT_INDICES.forEach((idx) => {
-          const p = lm[idx];
+          const p = adjLm[idx];
           if (p) pullOne(p, -1);
         });
       }
 
       // Geometry pass: eye vertical micro stretch
-      wctx.clearRect(0, 0, vw, vh);
+      wctx.clearRect(0, 0, pw, ph);
       wctx.drawImage(preview, 0, 0);
       const stretchEye = (ring: readonly number[]) => {
-        const pts = ring.map((idx) => lm[idx]).filter(Boolean) as Point[];
+        const pts = ring.map((idx) => adjLm[idx]).filter(Boolean) as Point[];
         if (!pts.length) return;
         const cx = pts.reduce((acc, p) => acc + p.x, 0) / pts.length;
         const cy = pts.reduce((acc, p) => acc + p.y, 0) / pts.length;
@@ -391,14 +412,14 @@ export function SipgaeApp() {
       }
 
       // Geometry pass: mid-face compression
-      const noseTip = lm[1];
-      const upperLip = lm[13];
+      const noseTip = adjLm[1];
+      const upperLip = adjLm[13];
       if (noseTip && upperLip && ENABLE_MIDFACE_COMPRESS) {
-        wctx.clearRect(0, 0, vw, vh);
+        wctx.clearRect(0, 0, pw, ph);
         wctx.drawImage(preview, 0, 0);
         const cx = (noseTip.x + upperLip.x) * 0.5;
         const cy = (noseTip.y + upperLip.y) * 0.5;
-        const faceW = Math.abs(lm[454].x - lm[234].x);
+        const faceW = Math.abs(adjLm[454].x - adjLm[234].x);
         const zoneW = faceW * 0.3;
         const zoneH = Math.max(12, Math.abs(upperLip.y - noseTip.y) * 3.2);
         ctx.save();
@@ -411,18 +432,18 @@ export function SipgaeApp() {
       }
 
       // Texture pass: skin-only micro smoothing
-      wctx.clearRect(0, 0, vw, vh);
+      wctx.clearRect(0, 0, pw, ph);
       wctx.drawImage(preview, 0, 0);
       ctx.save();
-      drawPolygonMask(ctx, lm, FACE_OVAL_INDICES);
+      drawPolygonMask(ctx, adjLm, FACE_OVAL_INDICES);
       ctx.clip();
       ctx.filter = `blur(${SKIN_SMOOTH_BLUR_PX}px)`;
       ctx.globalAlpha = SKIN_SMOOTH_ALPHA;
-      ctx.drawImage(work, 0, 0, vw, vh);
+      ctx.drawImage(work, 0, 0, pw, ph);
       ctx.restore();
       // Preserve eye texture by restoring original eye neighborhoods.
       const restoreEyePatch = (ring: readonly number[]) => {
-        const pts = ring.map((idx) => lm[idx]).filter(Boolean) as Point[];
+        const pts = ring.map((idx) => adjLm[idx]).filter(Boolean) as Point[];
         if (!pts.length) return;
         const cx = pts.reduce((acc, p) => acc + p.x, 0) / pts.length;
         const cy = pts.reduce((acc, p) => acc + p.y, 0) / pts.length;
@@ -439,7 +460,7 @@ export function SipgaeApp() {
       restoreEyePatch(RIGHT_EYE_RING);
 
       // Texture pass: eyes/brows/nose edge sharpen
-      wctx.clearRect(0, 0, vw, vh);
+      wctx.clearRect(0, 0, pw, ph);
       wctx.drawImage(preview, 0, 0);
       const sharpenLocal = (p: Point, radius: number, alpha = 0.25) => {
         ctx.save();
@@ -453,19 +474,19 @@ export function SipgaeApp() {
       };
       if (ENABLE_EYE_SHARPEN) {
         [33, 133, 362, 263].forEach((idx) => {
-          const p = lm[idx];
-          if (p) sharpenLocal(p, Math.max(6, vw * 0.009), 0.1);
+          const p = adjLm[idx];
+          if (p) sharpenLocal(p, Math.max(6, pw * 0.009), 0.1);
         });
         BROW_NOSE_INDICES.forEach((idx) => {
-          const p = lm[idx];
-          if (p) sharpenLocal(p, Math.max(6, vw * 0.009), 0.12);
+          const p = adjLm[idx];
+          if (p) sharpenLocal(p, Math.max(6, pw * 0.009), 0.12);
         });
       }
 
       // Finish pass: catchlight (iris indices 468-477 if available)
       const drawCatchlight = (p: Point) => {
         if (CATCHLIGHT_ALPHA <= 0 || !ENABLE_CATCHLIGHT) return;
-        const r = Math.max(0.8, vw * 0.0016);
+        const r = Math.max(0.8, pw * 0.0016);
         ctx.save();
         ctx.fillStyle = "#ffffff";
         ctx.globalAlpha = CATCHLIGHT_ALPHA;
@@ -474,9 +495,9 @@ export function SipgaeApp() {
         ctx.fill();
         ctx.restore();
       };
-      if (lm.length >= 478) {
-        const leftIris = lm.slice(468, 473);
-        const rightIris = lm.slice(473, 478);
+      if (adjLm.length >= 478) {
+        const leftIris = adjLm.slice(468, 473);
+        const rightIris = adjLm.slice(473, 478);
         const center = (iris: Point[]) => ({
           x: iris.reduce((acc, p) => acc + p.x, 0) / iris.length,
           y: iris.reduce((acc, p) => acc + p.y, 0) / iris.length,
@@ -490,7 +511,7 @@ export function SipgaeApp() {
     // fallback path: FaceDetector minimal touch-up
     const fallback = await getFallbackFaceData(video, vw);
     if (!fallback) return;
-    wctx.clearRect(0, 0, vw, vh);
+    wctx.clearRect(0, 0, pw, ph);
     wctx.drawImage(preview, 0, 0);
     const eyeR = fallback.bbox.w * 0.08;
     const drawFallbackCatchlight = (ex: number, ey: number) => {
@@ -502,8 +523,8 @@ export function SipgaeApp() {
       ctx.fill();
       ctx.restore();
     };
-    drawFallbackCatchlight(fallback.eyes[0].x, fallback.eyes[0].y);
-    drawFallbackCatchlight(fallback.eyes[1].x, fallback.eyes[1].y);
+    drawFallbackCatchlight(fallback.eyes[0].x - cropSx, fallback.eyes[0].y - cropSy);
+    drawFallbackCatchlight(fallback.eyes[1].x - cropSx, fallback.eyes[1].y - cropSy);
   }, [drawPolygonMask, getFallbackFaceData]);
 
   useEffect(() => {
@@ -581,7 +602,7 @@ export function SipgaeApp() {
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1280, min: 640 }, height: { ideal: 720, min: 480 } },
+          video: { facingMode: "user", width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, aspectRatio: { ideal: 16 / 9 } },
           audio: false,
         });
         if (cancelled) {
@@ -1269,7 +1290,7 @@ export function SipgaeApp() {
               style={
                 DIAGNOSTIC_RAW_VIDEO_PREVIEW
                   ? { display: "none" }
-                  : { width: "100vw", height: "100vh" }
+                  : { width: "min(100vw, calc(100vh * 4 / 3))", height: "auto", aspectRatio: "4 / 3" }
               }
             />
             <canvas ref={canvasRef} style={{ display: "none" }} />
