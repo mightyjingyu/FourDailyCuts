@@ -17,6 +17,7 @@ const WHITE_OVERLAY_COLOR = "#f0f8ff";
 const WHITE_OVERLAY_ALPHA = 0.07;
 const JAW_SLIM_STRENGTH = 0.62;
 const EYE_VERTICAL_STRETCH = 1.045;
+const EYE_HORIZONTAL_STRETCH = 1.08;
 const MIDFACE_COMPRESS = 0.94;
 const SKIN_SMOOTH_BLUR_PX = 7.0;
 const SKIN_SMOOTH_ALPHA = 0.82;
@@ -415,7 +416,7 @@ export function SipgaeApp() {
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.clip();
         ctx.translate(cx, cy);
-        ctx.scale(1, EYE_VERTICAL_STRETCH);
+        ctx.scale(EYE_HORIZONTAL_STRETCH, EYE_VERTICAL_STRETCH);
         ctx.translate(-cx, -cy);
         ctx.globalAlpha = 0.6;
         ctx.drawImage(work, cx - radius, cy - radius, radius * 2, radius * 2, cx - radius, cy - radius, radius * 2, radius * 2);
