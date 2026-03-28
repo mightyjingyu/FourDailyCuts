@@ -11,16 +11,16 @@ const EMPTY: (string | null)[] = [null, null, null, null];
 // Face Mesh landmark lerp smoothing factor (WebGL pipeline)
 const LERP_S = 0.12;
 const SMOOTHING_LERP = 0.15;
-const HIGHKEY_FILTER = "brightness(1.28) contrast(1.16) saturate(1.12)";
-const SHADOW_LIFT_ALPHA = 0.10;
+const HIGHKEY_FILTER = "brightness(1.18) contrast(1.12) saturate(1.08)";
+const SHADOW_LIFT_ALPHA = 0.08;
 const WHITE_OVERLAY_COLOR = "#f0f8ff";
-const WHITE_OVERLAY_ALPHA = 0.08;
-const JAW_SLIM_STRENGTH = 0.05;
-const EYE_VERTICAL_STRETCH = 1.010;
+const WHITE_OVERLAY_ALPHA = 0.06;
+const JAW_SLIM_STRENGTH = 0.12;
+const EYE_VERTICAL_STRETCH = 1.018;
 const MIDFACE_COMPRESS = 0.97;
-const SKIN_SMOOTH_BLUR_PX = 2.0;
-const SKIN_SMOOTH_ALPHA = 0.50;
-const EDGE_SHARPEN_CONTRAST = 1.22;
+const SKIN_SMOOTH_BLUR_PX = 3.0;
+const SKIN_SMOOTH_ALPHA = 0.60;
+const EDGE_SHARPEN_CONTRAST = 1.20;
 const CATCHLIGHT_ALPHA = 0;
 const ENABLE_EYE_STRETCH = true;
 const ENABLE_EYE_SHARPEN = true;
@@ -1269,12 +1269,13 @@ export function SipgaeApp() {
               position: "fixed",
               inset: 0,
               zIndex: 30,
-              background: "#111",
+              background: "#fff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
+            <FloatingBackground absolute />
             <video
               className="shoot-video"
               ref={videoRef}
@@ -1303,6 +1304,8 @@ export function SipgaeApp() {
                       width: "min(100vw, calc(100vh * 4 / 3))",
                       height: "auto",
                       aspectRatio: "4 / 3",
+                      position: "relative",
+                      zIndex: 2,
                       ...(isMobile && {
                         transform: `scale(${MOBILE_ZOOM_SCALE})`,
                         transformOrigin: "center center",
@@ -1322,6 +1325,7 @@ export function SipgaeApp() {
                 background: "rgba(0,0,0,0.55)",
                 color: "#fff",
                 fontSize: "0.95rem",
+                zIndex: 3,
               }}
             >
               {camError ? "카메라 오류 발생" : `촬영 ${filled + 1}/4 · ${tick}초 후 촬영`}

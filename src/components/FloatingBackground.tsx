@@ -28,7 +28,7 @@ const ICONS = [
   `<svg viewBox="0 0 28 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 16C3 16 2 14.5 2 13C2 11.3 3.2 10 4.8 10C4.3 9.3 4 8.5 4 7.5C4 5.5 5.5 4 7.5 4C8.2 4 8.8 4.2 9.4 4.5C10.2 3 11.7 2 13.5 2C16.5 2 19 4.2 19 7C19 7.2 19 7.4 18.9 7.6C20.1 8.2 21 9.4 21 10.8C21 13 19.2 14.8 17 14.8" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16H22C24 16 25 17 25 18.5C25 20 24 21 22 21H8L5 24L5 21H4C2 21 1 20 1 18.5C1 17 2 16 4 16Z" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 ];
 
-export function FloatingBackground() {
+export function FloatingBackground({ absolute = false }: { absolute?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,10 +46,10 @@ export function FloatingBackground() {
         svg.setAttribute("height", String(size));
         svg.style.display = "block";
       }
-      wrapper.style.cssText = `left:${Math.random() * 100}vw;animation-duration:${11 + Math.random() * 15}s;animation-delay:${-Math.random() * 20}s`;
+      wrapper.style.cssText = `left:${Math.random() * 100}%;animation-duration:${11 + Math.random() * 15}s;animation-delay:${-Math.random() * 20}s`;
       bg.appendChild(wrapper);
     }
   }, []);
 
-  return <div className="bg" ref={ref} aria-hidden />;
+  return <div className={absolute ? "bg bg-absolute" : "bg"} ref={ref} aria-hidden />;
 }

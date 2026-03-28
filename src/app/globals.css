@@ -32,6 +32,10 @@ body {
   z-index: 0;
   overflow: hidden;
 }
+.bg.bg-absolute {
+  position: absolute;
+  z-index: 1;
+}
 .bg-i {
   position: absolute;
   opacity: 0.18;
