@@ -15,14 +15,15 @@ const HIGHKEY_FILTER = "brightness(1.22) contrast(1.14) saturate(1.10)";
 const SHADOW_LIFT_ALPHA = 0.09;
 const WHITE_OVERLAY_COLOR = "#f0f8ff";
 const WHITE_OVERLAY_ALPHA = 0.07;
-const JAW_SLIM_STRENGTH = 0.28;
+const JAW_SLIM_STRENGTH = 0.36;
 const EYE_VERTICAL_STRETCH = 1.018;
 const MIDFACE_COMPRESS = 0.94;
 const SKIN_SMOOTH_BLUR_PX = 7.0;
-const SKIN_SMOOTH_ALPHA = 0.88;
+const SKIN_SMOOTH_ALPHA = 0.82;
+const SKIN_SMOOTH_GLOBAL_ALPHA = 0.28; // 전체 프레임 베이스 블러 (경계 완화용)
 const EDGE_SHARPEN_CONTRAST = 1.30;
 const CATCHLIGHT_ALPHA = 0;
-const NOSE_SLIM_STRENGTH = 0.08;
+const NOSE_SLIM_STRENGTH = 0.14;
 const FACE_SLIM_STRENGTH = 0.16;
 const ENABLE_EYE_STRETCH = true;
 const ENABLE_EYE_SHARPEN = true;
@@ -500,7 +501,15 @@ export function SipgaeApp() {
         });
       }
 
-      // Texture pass: skin-only micro smoothing
+      // Texture pass: 1단계 — 전체 프레임 베이스 블러 (얼굴 경계 완화)
+      wctx.clearRect(0, 0, pw, ph);
+      wctx.drawImage(preview, 0, 0);
+      ctx.save();
+      ctx.filter = `blur(${SKIN_SMOOTH_BLUR_PX * 0.5}px)`;
+      ctx.globalAlpha = SKIN_SMOOTH_GLOBAL_ALPHA;
+      ctx.drawImage(work, 0, 0, pw, ph);
+      ctx.restore();
+      // Texture pass: 2단계 — 얼굴 내부 추가 스무딩
       wctx.clearRect(0, 0, pw, ph);
       wctx.drawImage(preview, 0, 0);
       ctx.save();
