@@ -11,16 +11,16 @@ const EMPTY: (string | null)[] = [null, null, null, null];
 // Face Mesh landmark lerp smoothing factor (WebGL pipeline)
 const LERP_S = 0.12;
 const SMOOTHING_LERP = 0.15;
-const HIGHKEY_FILTER = "brightness(1.18) contrast(1.12) saturate(1.06)";
-const SHADOW_LIFT_ALPHA = 0.06;
+const HIGHKEY_FILTER = "brightness(1.28) contrast(1.16) saturate(1.12)";
+const SHADOW_LIFT_ALPHA = 0.10;
 const WHITE_OVERLAY_COLOR = "#f0f8ff";
-const WHITE_OVERLAY_ALPHA = 0.05;
-const JAW_SLIM_STRENGTH = 0.04;
-const EYE_VERTICAL_STRETCH = 1.008;
+const WHITE_OVERLAY_ALPHA = 0.08;
+const JAW_SLIM_STRENGTH = 0.05;
+const EYE_VERTICAL_STRETCH = 1.010;
 const MIDFACE_COMPRESS = 0.97;
-const SKIN_SMOOTH_BLUR_PX = 1.6;
-const SKIN_SMOOTH_ALPHA = 0.38;
-const EDGE_SHARPEN_CONTRAST = 1.18;
+const SKIN_SMOOTH_BLUR_PX = 2.0;
+const SKIN_SMOOTH_ALPHA = 0.50;
+const EDGE_SHARPEN_CONTRAST = 1.22;
 const CATCHLIGHT_ALPHA = 0;
 const ENABLE_EYE_STRETCH = true;
 const ENABLE_EYE_SHARPEN = true;
@@ -30,9 +30,8 @@ const ENABLE_MIDFACE_COMPRESS = false;
 const ENABLE_SKIN_SMOOTH = true;
 // 진단용: true면 캔버스 렌더를 끄고 원본 비디오를 직접 표시
 const DIAGNOSTIC_RAW_VIDEO_PREVIEW = false;
-/** 줌아웃 비율: 모바일 0.70, 데스크톱 0.92 */
+/** 모바일 프리뷰 CSS 줌아웃 비율 (캡처 사진에는 영향 없음) */
 const MOBILE_ZOOM_SCALE = 0.70;
-const DESKTOP_ZOOM_SCALE = 0.92;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
@@ -119,7 +118,7 @@ export function SipgaeApp() {
   const faceDetRef = useRef<unknown>(null);
   const lastDetectMsRef = useRef(0);
   const faceDataRef = useRef<FallbackFaceData | null>(null);
-  const isMobileRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const getCenterCropRect = useCallback((srcW: number, srcH: number, targetAspect: number) => {
     const srcAspect = srcW / srcH;
@@ -321,20 +320,13 @@ export function SipgaeApp() {
     const wctx = work.getContext("2d");
     if (!ctx || !wctx) return;
 
-    // Zoom-out: draw video scaled down, centered (black padding around)
-    const Z = isMobileRef.current ? MOBILE_ZOOM_SCALE : DESKTOP_ZOOM_SCALE;
-    const dW = Math.round(pw * Z);
-    const dH = Math.round(ph * Z);
-    const dOffX = Math.round((pw - dW) / 2);
-    const dOffY = Math.round((ph - dH) / 2);
-
-    // Base pass: mirror + highkey (with landscape crop + zoom-out)
+    // Base pass: mirror + highkey (with landscape crop)
     wctx.clearRect(0, 0, pw, ph);
     wctx.save();
     wctx.filter = HIGHKEY_FILTER;
-    wctx.translate(dW + dOffX, dOffY);
+    wctx.translate(pw, 0);
     wctx.scale(-1, 1);
-    wctx.drawImage(video, cropSx, cropSy, cropSw, cropSh, 0, 0, dW, dH);
+    wctx.drawImage(video, cropSx, cropSy, cropSw, cropSh, 0, 0, pw, ph);
     wctx.restore();
     ctx.clearRect(0, 0, pw, ph);
     ctx.drawImage(work, 0, 0);
@@ -371,11 +363,10 @@ export function SipgaeApp() {
 
     const lm = mpLandmarksSmoothRef.current;
     if (ENABLE_SKIN_SMOOTH && lm && lm.length >= 468) {
-      // Adjust landmarks to canvas coordinate space (crop offset + zoom-out scale)
-      const adjLm = lm.map((p) => ({
-        x: (p.x - cropSx) / cropSw * dW + dOffX,
-        y: (p.y - cropSy) / cropSh * dH + dOffY,
-      }));
+      // Adjust landmarks to canvas coordinate space (offset by crop)
+      const adjLm = (cropSx === 0 && cropSy === 0)
+        ? lm
+        : lm.map((p) => ({ x: p.x - cropSx, y: p.y - cropSy }));
 
       // Geometry pass: jaw line refine
       wctx.clearRect(0, 0, pw, ph);
@@ -545,8 +536,7 @@ export function SipgaeApp() {
   }, [drawPolygonMask, getFallbackFaceData]);
 
   useEffect(() => {
-    isMobileRef.current =
-      /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+    setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768);
   }, []);
 
   useEffect(() => {
@@ -982,9 +972,6 @@ export function SipgaeApp() {
             <p style={{ fontSize: "0.88rem", color: "#666666", marginBottom: 6 }}>
               원하시는 프레임을 선택한 후 촬영하기 버튼을 눌러주세요
             </p>
-            <p style={{ fontSize: "0.76rem", color: "#999999", marginBottom: 20 }}>
-              핸드폰으로 촬영할 경우 위아래가 잘려나옵니다
-            </p>
             <div className="frame-grid">
               <div>
                 <p style={{ fontSize: "0.82rem", color: "#666666", marginBottom: 10 }}>멍개 프레임</p>
@@ -1312,7 +1299,15 @@ export function SipgaeApp() {
               style={
                 DIAGNOSTIC_RAW_VIDEO_PREVIEW
                   ? { display: "none" }
-                  : { width: "min(100vw, calc(100vh * 4 / 3))", height: "auto", aspectRatio: "4 / 3" }
+                  : {
+                      width: "min(100vw, calc(100vh * 4 / 3))",
+                      height: "auto",
+                      aspectRatio: "4 / 3",
+                      ...(isMobile && {
+                        transform: `scale(${MOBILE_ZOOM_SCALE})`,
+                        transformOrigin: "center center",
+                      }),
+                    }
               }
             />
             <canvas ref={canvasRef} style={{ display: "none" }} />
