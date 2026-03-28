@@ -17,16 +17,20 @@ const WHITE_OVERLAY_COLOR = "#f0f8ff";
 const WHITE_OVERLAY_ALPHA = 0.07;
 const JAW_SLIM_STRENGTH = 0.18;
 const EYE_VERTICAL_STRETCH = 1.018;
-const MIDFACE_COMPRESS = 0.97;
-const SKIN_SMOOTH_BLUR_PX = 4.5;
-const SKIN_SMOOTH_ALPHA = 0.72;
+const MIDFACE_COMPRESS = 0.94;
+const SKIN_SMOOTH_BLUR_PX = 5.5;
+const SKIN_SMOOTH_ALPHA = 0.78;
 const EDGE_SHARPEN_CONTRAST = 1.30;
 const CATCHLIGHT_ALPHA = 0;
+const NOSE_SLIM_STRENGTH = 0.08;
+const FACE_SLIM_STRENGTH = 0.09;
 const ENABLE_EYE_STRETCH = true;
 const ENABLE_EYE_SHARPEN = true;
 const ENABLE_CATCHLIGHT = false;
 const ENABLE_JAW_SLIM = true;
-const ENABLE_MIDFACE_COMPRESS = false;
+const ENABLE_MIDFACE_COMPRESS = true;
+const ENABLE_NOSE_SLIM = true;
+const ENABLE_FACE_SLIM = true;
 const ENABLE_SKIN_SMOOTH = true;
 // 진단용: true면 캔버스 렌더를 끄고 원본 비디오를 직접 표시
 const DIAGNOSTIC_RAW_VIDEO_PREVIEW = false;
@@ -70,6 +74,8 @@ const RIGHT_EYE_RING = [362, 385, 387, 263, 373, 380] as const;
 const BROW_NOSE_INDICES = [70, 63, 105, 66, 107, 300, 293, 334, 296, 336, 168, 6, 197, 195, 4] as const;
 const JAW_LEFT_INDICES = [234, 172, 136, 150, 149, 176] as const;
 const JAW_RIGHT_INDICES = [454, 397, 365, 379, 378, 400] as const;
+// 코 날개 (좌: 캔버스 우측, 우: 캔버스 좌측 — 미러 기준)
+const NOSE_WING_INDICES = [64, 129, 98, 294, 358, 327] as const;
 
 export function SipgaeApp() {
   const [step, setStep] = useState<Step>("home");
@@ -419,7 +425,41 @@ export function SipgaeApp() {
         stretchEye(RIGHT_EYE_RING);
       }
 
-      // Geometry pass: mid-face compression
+      // Geometry pass: full face cheek slimming
+      if (ENABLE_FACE_SLIM) {
+        wctx.clearRect(0, 0, pw, ph);
+        wctx.drawImage(preview, 0, 0);
+        const faceLeft = adjLm[234];
+        const faceRight = adjLm[454];
+        const foreheadPt = adjLm[10];
+        const chinPt = adjLm[152];
+        if (faceLeft && faceRight && foreheadPt && chinPt) {
+          const faceCenterX = (faceLeft.x + faceRight.x) / 2;
+          const faceTopY = foreheadPt.y;
+          const faceBotY = chinPt.y;
+          const r = Math.max(8, pw * 0.028);
+          FACE_OVAL_INDICES.forEach((idx) => {
+            const p = adjLm[idx];
+            if (!p) return;
+            const yRatio = (p.y - faceTopY) / (faceBotY - faceTopY);
+            if (yRatio < 0.15 || yRatio > 0.90) return;
+            const gradient = Math.sin(yRatio * Math.PI) * 0.6 + 0.4;
+            const distFromCenter = p.x - faceCenterX;
+            if (Math.abs(distFromCenter) < pw * 0.008) return;
+            const dir: 1 | -1 = distFromCenter > 0 ? 1 : -1;
+            const dx = Math.abs(distFromCenter) * FACE_SLIM_STRENGTH * gradient * dir;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.globalAlpha = 0.32;
+            ctx.drawImage(work, p.x - r, p.y - r, r * 2, r * 2, p.x - r - dx, p.y - r, r * 2, r * 2);
+            ctx.restore();
+          });
+        }
+      }
+
+      // Geometry pass: mid-face compression (코~윗입술 세로 축소)
       const noseTip = adjLm[1];
       const upperLip = adjLm[13];
       if (noseTip && upperLip && ENABLE_MIDFACE_COMPRESS) {
@@ -428,15 +468,36 @@ export function SipgaeApp() {
         const cx = (noseTip.x + upperLip.x) * 0.5;
         const cy = (noseTip.y + upperLip.y) * 0.5;
         const faceW = Math.abs(adjLm[454].x - adjLm[234].x);
-        const zoneW = faceW * 0.3;
-        const zoneH = Math.max(12, Math.abs(upperLip.y - noseTip.y) * 3.2);
+        const zoneW = faceW * 0.46;
+        const zoneH = Math.max(14, Math.abs(upperLip.y - noseTip.y) * 3.0);
         ctx.save();
         ctx.beginPath();
         ctx.ellipse(cx, cy, zoneW, zoneH, 0, 0, Math.PI * 2);
         ctx.clip();
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = 0.72;
         ctx.drawImage(work, cx - zoneW, cy - zoneH, zoneW * 2, zoneH * 2, cx - zoneW, cy - zoneH * MIDFACE_COMPRESS, zoneW * 2, zoneH * 2 * MIDFACE_COMPRESS);
         ctx.restore();
+      }
+
+      // Geometry pass: nose narrowing
+      if (ENABLE_NOSE_SLIM && adjLm[1]) {
+        wctx.clearRect(0, 0, pw, ph);
+        wctx.drawImage(preview, 0, 0);
+        const noseCenterX = adjLm[1].x;
+        const r = Math.max(7, pw * 0.022);
+        NOSE_WING_INDICES.forEach((idx) => {
+          const p = adjLm[idx];
+          if (!p) return;
+          const dir: 1 | -1 = p.x > noseCenterX ? 1 : -1;
+          const dx = Math.abs(p.x - noseCenterX) * NOSE_SLIM_STRENGTH * dir;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.globalAlpha = 0.38;
+          ctx.drawImage(work, p.x - r, p.y - r, r * 2, r * 2, p.x - r - dx, p.y - r, r * 2, r * 2);
+          ctx.restore();
+        });
       }
 
       // Texture pass: skin-only micro smoothing
