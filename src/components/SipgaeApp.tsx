@@ -9,7 +9,6 @@ type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
 // Face Mesh landmark lerp smoothing factor (WebGL pipeline)
-const LERP_S = 0.12;
 const SMOOTHING_LERP = 0.15;
 const HIGHKEY_FILTER = "brightness(1.12) contrast(1.08) saturate(1.06)";
 const SHADOW_LIFT_ALPHA = 0.04;
