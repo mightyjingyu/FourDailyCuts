@@ -8,6 +8,8 @@ import { WebGLBeautyRenderer } from "./WebGLBeautyRenderer";
 type Step = "home" | "select" | "loading" | "shoot" | "done";
 
 const EMPTY: (string | null)[] = [null, null, null, null];
+// Face Mesh landmark lerp smoothing factor (WebGL pipeline)
+const LERP_S = 0.12;
 const SMOOTHING_LERP = 0.15;
 const HIGHKEY_FILTER = "brightness(1.22) contrast(1.14) saturate(1.10)";
 const SHADOW_LIFT_ALPHA = 0.09;
@@ -17,9 +19,9 @@ const JAW_SLIM_STRENGTH = 0.75;
 const EYE_VERTICAL_STRETCH = 1.045;
 const EYE_HORIZONTAL_STRETCH = 1.14;
 const MIDFACE_COMPRESS = 0.94;
-const SKIN_SMOOTH_BLUR_PX = 3.0;
-const SKIN_SMOOTH_ALPHA = 0.55;
-const SKIN_SMOOTH_GLOBAL_ALPHA = 0.10; // 전체 프레임 베이스 블러 (경계 완화용)
+const SKIN_SMOOTH_BLUR_PX = 7.0;
+const SKIN_SMOOTH_ALPHA = 0.82;
+const SKIN_SMOOTH_GLOBAL_ALPHA = 0.28; // 전체 프레임 베이스 블러 (경계 완화용)
 const EDGE_SHARPEN_CONTRAST = 1.30;
 const CATCHLIGHT_ALPHA = 0;
 const NOSE_SLIM_STRENGTH = 0.14;
@@ -109,6 +111,10 @@ export function SipgaeApp() {
   const rendererRef = useRef<WebGLBeautyRenderer | null>(null);
   // MediaPipe Face Mesh — 468+10 iris 랜드마크
   const faceMeshRef = useRef<unknown>(null);
+  const faceMeshReadyRef = useRef(false);
+  const faceMeshRunningRef = useRef(false);
+  const lastFaceMeshMsRef = useRef(0);
+  const landmarksRef = useRef<{ x: number; y: number; z: number }[] | null>(null);
   const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mpReadyRef = useRef(false);
   const mpFailedRef = useRef(false);
@@ -738,6 +744,57 @@ export function SipgaeApp() {
     };
   }, [step]);
 
+  // ── MediaPipe Face Mesh 초기화 ─────────────────────────────────────────
+  useEffect(() => {
+    if (step !== "shoot") return;
+    let destroyed = false;
+
+    (async () => {
+      try {
+        const { FaceMesh } = await import("@mediapipe/face_mesh");
+        if (destroyed) return;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mesh = new (FaceMesh as any)({
+          locateFile: (file: string) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`,
+        });
+        mesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        mesh.onResults((results: { multiFaceLandmarks?: { x: number; y: number; z: number }[][] }) => {
+          if (destroyed) return;
+          const raw = results.multiFaceLandmarks?.[0];
+          if (!raw || !raw.length) { landmarksRef.current = null; return; }
+          // lerp 스무딩으로 jitter 방지 (s=0.15)
+          const prev = landmarksRef.current;
+          if (prev && prev.length === raw.length) {
+            landmarksRef.current = raw.map((lm, i) => ({
+              x: prev[i].x * (1 - LERP_S) + lm.x * LERP_S,
+              y: prev[i].y * (1 - LERP_S) + lm.y * LERP_S,
+              z: prev[i].z * (1 - LERP_S) + lm.z * LERP_S,
+            }));
+          } else {
+            landmarksRef.current = raw.map((lm) => ({ ...lm }));
+          }
+        });
+        faceMeshRef.current = mesh;
+        faceMeshReadyRef.current = true;
+      } catch { /* MediaPipe 로드 실패 — 보정 없이 계속 */ }
+    })();
+
+    return () => {
+      destroyed = true;
+      faceMeshReadyRef.current = false;
+      faceMeshRunningRef.current = false;
+      landmarksRef.current = null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (faceMeshRef.current as any)?.close?.();
+      faceMeshRef.current = null;
+    };
+  }, [step]);
 
   useEffect(() => {
     if (step !== "shoot") return;
