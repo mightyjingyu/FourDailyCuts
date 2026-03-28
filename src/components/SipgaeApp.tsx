@@ -30,6 +30,8 @@ const ENABLE_MIDFACE_COMPRESS = false;
 const ENABLE_SKIN_SMOOTH = false;
 // 진단용: true면 캔버스 렌더를 끄고 원본 비디오를 직접 표시
 const DIAGNOSTIC_RAW_VIDEO_PREVIEW = false;
+/** 줌아웃 비율: 1.0 = 원본, 0.82 = 18% 축소(더 넓게 보임) */
+const PREVIEW_ZOOM_SCALE = 0.82;
 /** 멍개·일러스트 프레임 사진칸(4:3 캡처) */
 const SLOT_ASPECT = 4 / 3;
 const CAPTURE_HEIGHT = 960;
@@ -312,13 +314,20 @@ export function SipgaeApp() {
     const wctx = work.getContext("2d");
     if (!ctx || !wctx) return;
 
-    // Base pass: mirror + highkey (with landscape crop)
+    // Zoom-out: draw video scaled down, centered (black padding around)
+    const Z = PREVIEW_ZOOM_SCALE;
+    const dW = Math.round(pw * Z);
+    const dH = Math.round(ph * Z);
+    const dOffX = Math.round((pw - dW) / 2);
+    const dOffY = Math.round((ph - dH) / 2);
+
+    // Base pass: mirror + highkey (with landscape crop + zoom-out)
     wctx.clearRect(0, 0, pw, ph);
     wctx.save();
     wctx.filter = HIGHKEY_FILTER;
-    wctx.translate(pw, 0);
+    wctx.translate(dW + dOffX, dOffY);
     wctx.scale(-1, 1);
-    wctx.drawImage(video, cropSx, cropSy, cropSw, cropSh, 0, 0, pw, ph);
+    wctx.drawImage(video, cropSx, cropSy, cropSw, cropSh, 0, 0, dW, dH);
     wctx.restore();
     ctx.clearRect(0, 0, pw, ph);
     ctx.drawImage(work, 0, 0);
@@ -355,10 +364,11 @@ export function SipgaeApp() {
 
     const lm = mpLandmarksSmoothRef.current;
     if (ENABLE_SKIN_SMOOTH && lm && lm.length >= 468) {
-      // Adjust landmarks to canvas coordinate space (offset by crop)
-      const adjLm = (cropSx === 0 && cropSy === 0)
-        ? lm
-        : lm.map((p) => ({ x: p.x - cropSx, y: p.y - cropSy }));
+      // Adjust landmarks to canvas coordinate space (crop offset + zoom-out scale)
+      const adjLm = lm.map((p) => ({
+        x: (p.x - cropSx) / cropSw * dW + dOffX,
+        y: (p.y - cropSy) / cropSh * dH + dOffY,
+      }));
 
       // Geometry pass: jaw line refine
       wctx.clearRect(0, 0, pw, ph);
