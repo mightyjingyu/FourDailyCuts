@@ -994,7 +994,7 @@ export function SipgaeApp() {
               일상을 소중하개
             </p>
             <p style={{ fontSize: "0.95rem", color: "#666666", lineHeight: 1.6 }}>
-              여러분의 일상을 네컷으로 담아보세요
+              (모바일 이용시 사양에 따라 보정이 적용되지 않을 수 있으니 PC 사용을 권장 드립니다)
             </p>
             <button
               type="button"
